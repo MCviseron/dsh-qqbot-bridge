@@ -16,6 +16,13 @@
     "cordis.patch.yml",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MCviseron/dsh-qqbot-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MCviseron/dsh-qqbot-bridge/issues"
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",
