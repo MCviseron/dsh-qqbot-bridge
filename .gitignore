@@ -18,3 +18,8 @@ exp6_work/
 workspace/
 *.tmp
 *.bak
+
+# runtime artifacts
+share/
+shots/
+notes.md
