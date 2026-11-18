@@ -205,7 +205,7 @@ async def main():
     failures += await case("主人紧接着说也不答（无 @）", bot, msg("那你觉得呢", member=OWNER_MEMBER), False)
 
     bot = make_bot()
-    failures += await case("叫名字但没 @ -> 不答", bot, msg("大肥鱼你在吗"), False)
+    failures += await case("叫名字但没 @ -> 也答（别名视同点名）", bot, msg("大肥鱼你在吗"), True)
 
     bot = make_bot()
     await bot.on_group_message_create(msg("/状态"))

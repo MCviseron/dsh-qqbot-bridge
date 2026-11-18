@@ -803,6 +803,10 @@ class DSHBot(Client):
             message += "\n失败：" + "；".join(sorted(set(failures))[:3])
         await self.send_text(conv_key, message)
 
+    def _alias_list(self):
+        raw = self.rt_str("bot_aliases", ",".join(self.config.bot_aliases))
+        return ", ".join(part.strip() for part in raw.split(",") if part.strip())
+
     def addresses_bot(self, text: str) -> bool:
         """Whether the text names the bot without an explicit @ mention."""
         lowered = text.lower()
@@ -1983,6 +1987,16 @@ class DSHBot(Client):
         if not force_timer and len(entry.lines) < self.rt_int("chatter_batch", self.config.chatter_batch):
             return
         lines = list(entry.lines)
+
+        # Someone naming the bot inside plain chatter must get a real answer:
+        # the judge prompt offers [NO_REPLY], and a called bot must not take it.
+        if any(self.addresses_bot(line) for line in lines):
+            self.chatter.pop(conv_key, None)
+            joined = chr(10).join(line.split(": ", 1)[-1] for line in lines)
+            log.info("chatter named the bot; answering instead of judging (%d line(s))", len(lines))
+            await self._submit(conv_key, joined, "群友", False, None, chat=False)
+            return
+
         entry.lines.clear()
         entry.first_at = 0.0
         entry.last_judge_at = now
@@ -2006,6 +2020,7 @@ class DSHBot(Client):
                 *lines,
                 "",
                 "像群里的一员那样判断：",
+                f"- 如果有人叫你的名字/别名（{self._alias_list()}）或者明显在问你，**必须回答**，不许回 [NO_REPLY]；",
                 "- 如果他们在接着你的话、或者问到你了，就顺着聊 1~2 句口语；",
                 "- 如果你刚说过类似的话、或者插不上嘴，只回 [NO_REPLY]；",
                 "- 不要重复自己说过的内容，不要总结/复述别人的聊天，不要客套，不要写成报告。",
@@ -2115,13 +2130,14 @@ class DSHBot(Client):
                 len(getattr(message, "mentions", None) or []),
             )
             mentioned = await self._mentions_bot(message)
+            named = self.addresses_bot(text)
             commanded = text.startswith("/")
-            if mentioned or commanded:
+            if mentioned or named or commanded:
                 self._addressed_at[conv_key] = time.time()
                 stale = self.chatter.pop(conv_key, None)
                 if stale is not None and stale.timer is not None:
                     stale.timer.cancel()
-                log.info("treat as addressed (mention=%s cmd=%s)", mentioned, commanded)
+                log.info("treat as addressed (mention=%s name=%s cmd=%s)", mentioned, named, commanded)
                 await self._handle_group_at(message, chat=False)
                 return
             images, _skipped = await self._collect_images(message.attachments) if message.attachments else ([], 0)
