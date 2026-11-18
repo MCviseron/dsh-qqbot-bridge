@@ -148,8 +148,10 @@ export function apply(ctx, rawConfig) {
         parts.push(`【引用了${who}发的一条非文本消息】`, '')
       } else if (quote.resolved === true) {
         const limit = Number.isFinite(config.quoteContextChars) ? config.quoteContextChars : 300
-        const quoted = String(quote.text ?? '').slice(0, limit)
-        parts.push(`【引用了${who}的消息】`, `> ${quoted || '（空）'}`, '')
+        const full = String(quote.text ?? '')
+        const cut = full.length > limit
+        const quoted = cut ? `${full.slice(0, limit)}…` : full
+        parts.push(`【引用了${who}的消息】`, `“${quoted || '（空）'}”`, '')
       } else {
         const hint = quote.author ? `（可能来自${quote.author}）` : ''
         parts.push(`【对方引用了一条我这边看不到内容的消息${hint}】`, '')
