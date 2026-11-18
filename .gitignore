@@ -1,3 +1,20 @@
-node_modules/
-state/
+# ---- never commit these ----
+bot/.env
+bot/config.json
+bot/state.json
+bot/groups.json
+bot/panels/
+bot/shots/
+bot/state/
+bot/logs/
+plugin/state/
 *.log
+__pycache__/
+*.pyc
+
+# ---- local scratch / unrelated ----
+.acl-recovery/
+exp6_work/
+workspace/
+*.tmp
+*.bak

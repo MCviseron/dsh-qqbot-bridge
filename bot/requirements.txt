@@ -1,0 +1,6 @@
+# Python 依赖（机器人侧）
+# 建议使用 Python 3.12 的独立 conda 环境
+aiohttp>=3.7,<4
+Pillow>=10
+# QQ 官方 SDK（只读依赖，本项目不修改它）
+viseron-qqbotpy @ git+https://github.com/MCviseron/viseron-qqbotpy.git
