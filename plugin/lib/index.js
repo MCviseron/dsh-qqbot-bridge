@@ -359,6 +359,72 @@ export function apply(ctx, rawConfig) {
       remember(convKey, `${senderName || '群友'}: ${label}`)
       return { ok: true, sessionId, accepted: true }
     },
+    judge: async (body) => {
+      await ready
+      const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
+      const transcript = typeof body?.transcript === 'string' ? body.transcript.trim() : ''
+      if (convKey === '' || transcript === '') return { ok: false, error: 'convKey/transcript required' }
+      const sessionController = host.sessionController
+      if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
+
+      let sessionId = judgeSessions.get(convKey)
+      try {
+        if (sessionId === undefined) {
+          const created = await sessionController.create({ cwd: config.cwd })
+          sessionId = String(created.sessionId)
+          judgeSessions.set(convKey, sessionId)
+          log(`judge session for ${convKey}: ${sessionId}`)
+        }
+      } catch (error) {
+        return { ok: false, error: `judge session failed: ${error instanceof Error ? error.message : String(error)}` }
+      }
+
+      judgeTexts.set(sessionId, [])
+      const verdict = new Promise(resolve => {
+        judgeWaiters.set(sessionId, resolve)
+        setTimeout(() => {
+          if (judgeWaiters.get(sessionId) === resolve) {
+            judgeWaiters.delete(sessionId)
+            resolve('')
+          }
+        }, 90000)
+      })
+
+      const instruction = [
+        '【群聊插话判断器】你是一个独立判断器，不参与聊天，只做判断。',
+        '下面是这个群里最近的消息原文（每行 发言人: 内容）：',
+        transcript,
+        '',
+        '判断现在是否需要一个机器人插话/回答。只输出两行：',
+        '第一行：REPLY 或 SKIP',
+        '第二行：一句话理由（不超过40字）',
+      ].join('\n')
+
+      try {
+        await sessionController.prompt({
+          requestId: randomUUID(),
+          sessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text: instruction }],
+          clientTimeZone: 'Asia/Shanghai',
+        }, new AbortController().signal)
+      } catch (error) {
+        judgeWaiters.delete(sessionId)
+        return { ok: false, error: `judge prompt failed: ${error instanceof Error ? error.message : String(error)}` }
+      }
+
+      const answer = String(await verdict)
+      const lines = answer.split('\n').map(line => line.trim()).filter(line => line !== '')
+      const head = (lines[0] ?? '').toUpperCase()
+      const needReply = head.startsWith('REPLY')
+      const decisive = head.startsWith('REPLY') || head.startsWith('SKIP')
+      return {
+        ok: decisive,
+        needReply,
+        note: lines.slice(1).join(' ').slice(0, 200),
+        raw: answer.slice(0, 200),
+      }
+    },
     approval: async (body) => {
       const approvalId = typeof body?.approvalId === 'string' ? body.approvalId : ''
       const decision = body?.decision === 'allow' ? 'allowed-once' : body?.decision === 'cancel' ? 'cancelled' : 'rejected'
@@ -453,6 +519,11 @@ export function apply(ctx, rawConfig) {
     })
   })
 
+  // Independent judge sessions (Plan B): one per conversation, no shared history.
+  const judgeTexts = new Map()     // sessionId -> collected assistant text
+  const judgeWaiters = new Map()   // sessionId -> resolve(text)
+  const judgeSessions = new Map()  // convKey  -> sessionId
+
   // Capture each finished turn so the bot can answer the QQ message.
   ctx.on('session/event', (session, event) => {
     const sessionId = String(session?.id ?? '')
@@ -460,6 +531,20 @@ export function apply(ctx, rawConfig) {
     const convKey = store.convOf(sessionId)
     if (convKey === undefined) return
     const data = event?.data ?? {}
+    if (judgeTexts.has(sessionId)) {
+      if (event.type === 'assistant/message') {
+        const t = textOf(data.message)
+        if (t.trim() !== '') judgeTexts.get(sessionId).push(t)
+      }
+      if (event.type === 'turn/end') {
+        const done = judgeWaiters.get(sessionId)
+        if (done !== undefined) {
+          judgeWaiters.delete(sessionId)
+          done(judgeTexts.get(sessionId).join('\n').trim())
+        }
+      }
+      return
+    }
     if (event.type === 'turn/start') {
       turns.set(sessionId, { texts: [], tools: [], turnId: `${Date.now().toString(36)}-${sessionId.slice(-6)}` })
       startStream(sessionId, convKey)

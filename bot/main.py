@@ -2058,6 +2058,55 @@ class DSHBot(Client):
         log.info("judging %d line(s) of chatter in %s", len(lines), conv_key)
         await self._submit(conv_key, prompt, "群友", False, None, chat=True)
 
+    def _pool_transcript(self, conv_key: str, limit: int = 12) -> str:
+        """Recent messages of this conversation, verbatim, oldest first."""
+        cutoff = time.time() - self._pool_ttl()
+        items = [
+            item
+            for item in self.pool.values()
+            if item.conv_key == conv_key and item.at >= cutoff
+        ]
+        items.sort(key=lambda item: item.at)
+        lines = [
+            f"{'你（机器人）' if item.outbound else item.author}: {item.text}"
+            for item in items[-limit:]
+        ]
+        return chr(10).join(lines)
+
+    async def _plan_b(self, conv_key: str, message: Any, member_openid: str) -> None:
+        """Plan B: an independent judge decides, then the main model gets the verbatim pool."""
+        transcript = self._pool_transcript(conv_key)
+        if transcript.strip() == "":
+            transcript = f"群友{short_id(member_openid)}: {clean_content(getattr(message, 'content', ''))}"
+        try:
+            verdict = await self.bridge.judge(conv_key, transcript)
+        except BridgeError as error:
+            log.warning("plan B judge unavailable (%s); fallback to plain chatter", error)
+            await self._buffer_chatter(conv_key, "群友" + short_id(member_openid), clean_content(getattr(message, "content", "")))
+            await self._maybe_judge(conv_key)
+            return
+        need_reply = bool(verdict.get("needReply"))
+        note = str(verdict.get("note") or "").strip()
+        if not need_reply:
+            log.info("plan B: judge stayed silent%s", f" ({note[:60]})" if note else "")
+            try:
+                await self.bridge.inbound(conv_key=conv_key, text=transcript, context_only=True)
+            except BridgeError as error:
+                log.debug("plan B context push failed: %s", error)
+            return
+        log.info("plan B: judge wants a reply%s", f" ({note[:60]})" if note else "")
+        prompt = "【群里最近的原文】" + chr(10) + transcript
+        if note:
+            prompt += chr(10) + chr(10) + "【判断参考】" + note
+        await self._queue_message(
+            conv_key,
+            prompt,
+            "群友" + short_id(member_openid),
+            False,
+            [],
+            chat=False,
+        )
+
     async def _handle_group_at(self, message: GroupMessage, *, chat: bool = False) -> None:
         self._remember_id(message.id)
         log.info(
@@ -2169,6 +2218,10 @@ class DSHBot(Client):
                 log.info("treat as addressed (mention=%s name=%s cmd=%s)", mentioned, named, commanded)
                 await self._handle_group_at(message, chat=False)
                 return
+            if self.rt_str("group_mode", "A").strip().upper() == "B":
+                await self._plan_b(conv_key, message, member_openid)
+                return
+
             images, _skipped = await self._collect_images(message.attachments) if message.attachments else ([], 0)
             if images:
                 self.recent_images[conv_key] = (images[-2:], time.time())

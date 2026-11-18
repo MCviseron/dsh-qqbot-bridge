@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
 
     const SWITCHES = [["enabled","接收消息（总）","关掉后私聊与群聊都不响应"],["c2c_enabled","私聊响应",""],["group_enabled","群聊响应",""],["group_full_mode","群全量消息","需在开放平台开启全量接收"],["md_auto","Markdown 自动发送","回复像 Markdown 时用 msg_type=2"],["stream_enabled","流式输出（仅私聊）","平台只在单聊支持流式，群里整段发"],["quote_enabled","识别引用消息","引用时把被引用原文和来源一起带给模型"],["quote_probe","引用排查日志","把平台原始引用字段打进日志，排查完请关"],["capture_enabled","允许截屏","/截图、/窗口 是否可用"]]
     const NUMBERS = [["chatter_batch","攒够几条触发判断",1,30],["chatter_max_s","最长等待（秒）",5,600],["chatter_cooldown_s","判断后冷却（秒）",0,1800],["bot_say_memory_s","「最近说过」记忆（秒）",30,3600],["stuck_turn_s","回合卡死判定（秒）",30,1800],["ack_delay_s","迟到提示延迟（秒）",0,120],["debounce_ms","连发合并（毫秒）",0,5000],["max_chars","单条最大字数",200,4000],["image_max_mb","图片上限（MB）",1,20],["rate_limit_per_hour","每会话每小时上限（0=不限）",0,240],["stream_interval_ms","流式节流（毫秒）",50,2000],["quote_context_chars","引用原文上限（字）",50,2000],["pool_ttl_s","消息池保留（秒）",60,86400],["pool_max","消息池上限（条）",10,1000]]
-    const TEXTS = [["group_allowlist","群白名单（openid，逗号分隔，空=全部）"],["c2c_allowlist","私聊白名单（同上）"],["bot_aliases","群内别名（逗号分隔）"],["quiet_hours","静默时段（如 23:30-07:00，@ 仍回复）"],["appid","APPID（留空=用 .env）"],["appsecret","APPSECRET（留空=用 .env，需重启）"]]
+    const TEXTS = [["group_allowlist","群白名单（openid，逗号分隔，空=全部）"],["c2c_allowlist","私聊白名单（同上）"],["bot_aliases","群内别名（逗号分隔）"],["quiet_hours","静默时段（如 23:30-07:00，@ 仍回复）"],["group_mode","群聊主动消息模式（A/B）"],["appid","APPID（留空=用 .env）"],["appsecret","APPSECRET（留空=用 .env，需重启）"]]
 
     function useStyle() {
       React.useEffect(function () {

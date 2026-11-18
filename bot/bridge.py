@@ -103,6 +103,14 @@ class BridgeClient:
             },
         )
 
+    async def judge(self, conv_key: str, transcript: str) -> Dict[str, Any]:
+        """Ask the plugin's independent judge session whether to answer."""
+        return await self._request(
+            "POST",
+            "/judge",
+            payload={"convKey": conv_key, "transcript": transcript},
+        )
+
     async def pull(self, cursor: Optional[int], wait_ms: int) -> Dict[str, Any]:
         """Long-poll the outbox; cursor=None starts from the current tail."""
         params: Dict[str, Any] = {"wait": max(0, int(wait_ms))}
