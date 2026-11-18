@@ -152,7 +152,7 @@ async def main():
     if not ok:
         failures += 1
     first_prompt = str(judged[0].get("text", "")) if judged else ""
-    ok = "还一句话都没说过" in first_prompt and "一直没说话" not in first_prompt
+    ok = "没看到你在群里说过话" in first_prompt and "一直没说话" not in first_prompt
     print(("ok   " if ok else "FAIL ") + "没说过话时提示词说「还没说过」")
     if not ok:
         failures += 1

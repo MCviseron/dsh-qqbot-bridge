@@ -58,6 +58,8 @@ code{color:var(--dim);font-size:12px}
 <div class="row"><label>流式输出（仅私聊）<div class="hint">平台只在单聊支持流式，群里自动整段发</div></label><div class="sw" data-key="stream_enabled"></div></div>
 <div class="row"><label>流式节流（毫秒）<div class="hint">越小越流畅，太小会被限流</div></label><input type="number" min="50" max="2000" step="50" data-key="stream_interval_ms"></div>
 <div class="row"><label>识别引用消息<div class="hint">引用时把被引用原文/来源一起带给模型</div></label><div class="sw" data-key="quote_enabled"></div></div>
+<div class="row"><label>消息池保留（秒）<div class="hint">引用解析、/撤回、插话判断共用的窗口</div></label><input type="number" min="60" max="86400" step="60" data-key="pool_ttl_s"></div>
+<div class="row"><label>消息池上限（条）<div class="hint">窗口内最多保留多少条消息</div></label><input type="number" min="10" max="1000" step="10" data-key="pool_max"></div>
 <div class="row"><label>引用原文上限（字）<div class="hint">对方引用消息时，带给模型的被引用内容长度</div></label><input type="number" min="50" max="2000" step="10" data-key="quote_context_chars"></div>
 <div class="row"><label>引用排查日志<div class="hint">把平台原始引用字段打进日志，排查完请关闭</div></label><div class="sw" data-key="quote_probe"></div></div>
 <div class="row"><label>迟到提示延迟（秒）</label><input type="number" min="0" max="120" data-key="ack_delay_s"></div>

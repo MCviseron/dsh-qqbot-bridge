@@ -37,6 +37,9 @@ DEFAULTS: Dict[str, Any] = {
     "c2c_allowlist": "",
     "bot_aliases": "蓝色大肥鱼,大肥鱼,机器人,DSH,dsh",
     "quiet_hours": "",
+    # 消息池（引用解析 + /撤回 + 插话判断的上下文窗口）
+    "pool_ttl_s": 1800,
+    "pool_max": 100,
     # 引用消息：识别开关、随提示词带给模型的原文上限、排查日志
     "quote_enabled": True,
     "quote_context_chars": 300,

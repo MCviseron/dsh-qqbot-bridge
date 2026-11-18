@@ -634,15 +634,21 @@ class DSHBot(Client):
                 self._seen_ids.pop(key, None)
 
     # -- recent message pool (for /撤回) ------------------------------------ #
+    def _pool_ttl(self) -> float:
+        return max(60.0, self.rt_float("pool_ttl_s", MSG_POOL_TTL_S))
+
+    def _pool_limit(self) -> int:
+        return max(10, self.rt_int("pool_max", MSG_POOL_MAX))
+
     def _pool_add(self, item: PooledMessage) -> None:
         """Keep the last 10 minutes of traffic, oldest evicted first."""
         self.pool[item.message_id] = item
         if item.idx:
             self.pool_idx[item.idx] = item.message_id
-        cutoff = time.time() - MSG_POOL_TTL_S
+        cutoff = time.time() - self._pool_ttl()
         for key in [key for key, value in self.pool.items() if value.at < cutoff]:
             self.pool.pop(key, None)
-        while len(self.pool) > MSG_POOL_MAX:
+        while len(self.pool) > self._pool_limit():
             self.pool.pop(next(iter(self.pool)), None)
         if self.pool_idx:
             live = {item.message_id for item in self.pool.values()}
@@ -690,7 +696,7 @@ class DSHBot(Client):
         )
 
     def _pool_items(self, conv_key: str) -> List[PooledMessage]:
-        cutoff = time.time() - MSG_POOL_TTL_S
+        cutoff = time.time() - self._pool_ttl()
         items = [item for item in self.pool.values() if item.conv_key == conv_key and item.at >= cutoff]
         return sorted(items, key=lambda item: item.at)
 
@@ -1409,7 +1415,7 @@ class DSHBot(Client):
         """Who wrote the quoted message: the bot itself, the owner, or a group member."""
         message_id = self.pool_idx.get(ref_idx, "")
         item = self.pool.get(message_id) if message_id else None
-        if item is None or item.at < time.time() - MSG_POOL_TTL_S:
+        if item is None or item.at < time.time() - self._pool_ttl():
             return "", False
         if item.outbound:
             return "你自己（机器人）", True
@@ -1473,7 +1479,7 @@ class DSHBot(Client):
                     text = content.strip()
                 if ref_id:
                     item = self.pool.get(ref_id)
-                    if item is not None and item.at >= time.time() - MSG_POOL_TTL_S:
+                    if item is not None and item.at >= time.time() - self._pool_ttl():
                         return {
                             "ref_id": ref_id,
                             "resolved": True,
@@ -1502,7 +1508,7 @@ class DSHBot(Client):
             author, outbound = self._quote_author(ref_idx)
             message_id = self.pool_idx.get(ref_idx, "")
             item = self.pool.get(message_id) if message_id else None
-            if item is None or item.at < time.time() - MSG_POOL_TTL_S:
+            if item is None or item.at < time.time() - self._pool_ttl():
                 return {"ref_id": ref_idx, "resolved": False, "author": author, "text": "", "kind": "text"}
             return {
                 "ref_id": ref_idx,
@@ -2006,14 +2012,20 @@ class DSHBot(Client):
         spoke_text, spoke_at = self._last_bot_say.get(conv_key, ("", 0.0))
         since = time.time() - spoke_at if spoke_text else float("inf")
         if spoke_text and since < self.rt_float("bot_say_memory_s", self.config.bot_say_memory_s):
-            situation = f"你在群里最近说过（{max(0, int(since))} 秒前）：\u201c{spoke_text[:160]}\u201d"
+            situation = (
+                f"你在群里最近说过（{max(0, int(since))} 秒前）：\u201c{spoke_text[:160]}\u201d"
+                f"（可参考的记录：最近 {int(self._pool_ttl() // 60)} 分钟 / 最近 {self._pool_limit()} 条）"
+            )
         elif spoke_text:
             situation = (
                 f"你在这群里已经安静了 {int(since // 60)} 分钟，最近没说话"
                 f"（更早之前说过：\u201c{spoke_text[:80]}\u201d，只作背景，别重复它）。"
             )
         else:
-            situation = "你在这群里还一句话都没说过。"
+            situation = (
+                f"在最近 {int(self._pool_ttl() // 60)} 分钟 / 最近 {self._pool_limit()} 条消息的记录里，"
+                "没看到你在群里说过话（不代表你从没说过，只是这些记录里没有）。"
+            )
         speakers = [line.split(": ", 1)[0] for line in lines if ": " in line]
         last_speaker = speakers[-1] if speakers else "群友"
         prev_speaker = speakers[-2] if len(speakers) > 1 else ""
