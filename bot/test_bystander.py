@@ -29,7 +29,7 @@ async def main():
     failures += check("两人对话 -> 标注旁观者",
                       "旁观者" in two_people and "群友A0002" in two_people, two_people[:60])
     failures += check("提示里点明'别把对话当邀请'", "当成对你的邀请" in two_people)
-    failures += check("提示把风格交给模型", "由你定" in two_people)
+    failures += check("保留原格式与判断段", "像群里的一员那样判断：" in two_people)
 
     called = await prompt_for(["群友B0001: 好无聊啊", "群友A0002: 大肥鱼你觉得呢"])
     failures += check("最后一句叫名字 -> 跳过判断直接作答",
