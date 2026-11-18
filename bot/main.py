@@ -1958,7 +1958,7 @@ class DSHBot(Client):
         if entry is None:
             entry = Chatter()
             self.chatter[conv_key] = entry
-        entry.lines.append(f"{sender}: {text}")
+        entry.lines.append(f"[{time.strftime('%H:%M')}] {sender}: {text}")
         if len(entry.lines) > 12:
             entry.lines = entry.lines[-12:]
         if entry.first_at == 0.0:
@@ -2068,6 +2068,7 @@ class DSHBot(Client):
         ]
         items.sort(key=lambda item: item.at)
         lines = [
+            f"[{time.strftime('%H:%M', time.localtime(item.at))}] "
             f"{'你（机器人）' if item.outbound else item.author}: {item.text}"
             for item in items[-limit:]
         ]

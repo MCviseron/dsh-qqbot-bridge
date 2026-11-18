@@ -29,6 +29,7 @@ export const DEFAULT_CONFIG = {
   contextLines: 30,
   argumentPreviewChars: 600,
   quoteContextChars: 300,
+  historyMax: 200,
   streamEnabled: true,
   streamIntervalMs: 250,
   autoStartBot: true,
@@ -120,11 +121,27 @@ export function apply(ctx, rawConfig) {
     return at === -1 ? line : line.slice(0, at).trimEnd()
   }
 
+  // Longer per-conversation history (with timestamps) the model can search.
+  const history = new Map()
+  const stamp = () => {
+    const now = new Date()
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  }
+  const pushHistory = (convKey, line) => {
+    const list = history.get(convKey) ?? []
+    list.push(`[${stamp()}] ${stripHints(line)}`)
+    const cap = Number.isFinite(config.historyMax) ? config.historyMax : 200
+    if (list.length > cap) list.splice(0, list.length - cap)
+    history.set(convKey, list)
+  }
+
   const remember = (convKey, line) => {
     const list = contexts.get(convKey) ?? []
-    list.push(stripHints(line))
+    const stamped = `[${stamp()}] ${stripHints(line)}`
+    list.push(stamped)
     if (list.length > config.contextLines) list.splice(0, list.length - config.contextLines)
     contexts.set(convKey, list)
+    pushHistory(convKey, line)
   }
 
   /** Model-facing preamble: where the message came from and who is speaking. */
@@ -620,6 +637,53 @@ export function apply(ctx, rawConfig) {
 
   // The Session service may arrive after this entry; wait for it instead of
   // failing the whole profile boot when it is absent.
+  // Model-facing retrieval over the timestamped history buffer.
+  ctx.inject(['tools'], (scope) => {
+    const tools = scope.tools ?? (typeof scope.get === 'function' ? scope.get('tools') : undefined)
+    if (tools === undefined || typeof tools.register !== 'function') {
+      log('qq_history tool unavailable (tools service missing)')
+      return
+    }
+    const definition = {
+      name: 'qq_history',
+      description:
+        '搜索 QQ 群聊/私聊最近的历史消息（每行带 [HH:MM] 时间戳）。' +
+        '当对方提到你没见过的内容、或需要确认「谁在什么时候说过什么」时调用。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          convKey: { type: 'string', description: '会话键，如 group:XXXX 或 c2c:XXXX；留空表示所有会话' },
+          query: { type: 'string', description: '关键词，留空返回最近若干条' },
+          limit: { type: 'number', description: '返回条数上限，默认 30，最大 100' },
+        },
+      },
+      output: {
+        schema: { type: 'object' },
+        render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      async execute(args) {
+        const limit = Math.max(1, Math.min(Number(args?.limit ?? 30) || 30, 100))
+        const needle = typeof args?.query === 'string' ? args.query.trim() : ''
+        const convFilter = typeof args?.convKey === 'string' ? args.convKey.trim() : ''
+        const keys = convFilter !== '' ? [convFilter] : [...history.keys()]
+        const lines = []
+        for (const key of keys) {
+          for (const line of history.get(key) ?? []) {
+            if (needle === '' || line.includes(needle)) lines.push(`${key} ${line}`)
+          }
+        }
+        return { ok: true, count: lines.slice(-limit).length, lines: lines.slice(-limit) }
+      },
+    }
+    try {
+      tools.register(definition)
+      log('qq_history tool registered')
+    } catch (error) {
+      log(`qq_history registration failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  })
+
   ctx.inject(['sessionController'], (sctx) => {
     host.sessionController = sctx.sessionController
     log('sessionController attached')

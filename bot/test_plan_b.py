@@ -115,6 +115,7 @@ async def main():
     failures += check("B 模式：判断为不回 -> 不打扰主模型", not bot.bridge.calls or bot.bridge.calls[-1].get("context_only") is True,
                       str(bot.bridge.calls[-1:])[:80])
     failures += check("B 模式：原文进了判断器", bool(bot.bridge.judged) and "好无聊啊" in bot.bridge.judged[-1])
+    failures += check("原文带时间戳", bool(bot.bridge.judged) and bot.bridge.judged[-1].startswith("["))
 
     bot = make_bot("B", {"ok": True, "needReply": True, "note": "在问机器人"})
     bot._register(CONV, "group", GROUP, "M1")
