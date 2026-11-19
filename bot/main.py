@@ -1258,9 +1258,17 @@ class DSHBot(Client):
         self._pool_sent(target, result, chunk)
         return result
 
+    def _readable_at(self, text: str) -> str:
+        """QQ groups only support @everyone; single-person @s are rendered as readable aliases."""
+        if not text:
+            return text
+        text = text.replace("@全体", AT_EVERYONE_TOKEN).replace("@everyone", AT_EVERYONE_TOKEN)
+        return OPENID_RE.sub(lambda match: "@群友" + match.group(1)[-6:].upper(), text)
+
     async def _send_chunk(self, target: Target, chunk: str, *, keyboard: Optional[Dict[str, Any]]) -> None:
         # QQ renders 按钮 only under a Markdown message (msg_type=2) for group/
         # C2C chats, so a keyboard forces the markdown path.
+        chunk = self._readable_at(chunk)
         md_auto = self.rt_bool("md_auto", self.config.md_auto)
         use_markdown = keyboard is not None or (md_auto and looks_like_markdown(chunk))
         msg_id = target.passive_slot()
@@ -2522,6 +2530,10 @@ def _scene_ext(scene):
         if isinstance(value, str) and value.strip():
             flat.setdefault(key, value.strip())
     return flat
+
+
+AT_EVERYONE_TOKEN = "<qqbot-at-everyone />"
+OPENID_RE = re.compile(r"@?(?<![0-9A-Za-z])([0-9A-Fa-f]{6,32})(?![0-9A-Za-z])")
 
 
 def _decode_line(raw: bytes) -> str:
