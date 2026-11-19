@@ -394,6 +394,42 @@ export function apply(ctx, rawConfig) {
       remember(convKey, `${senderName || '群友'}: ${label}`)
       return { ok: true, sessionId, accepted: true }
     },
+    permission: async (body) => {
+      await ready
+      const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
+      const preset = typeof body?.preset === 'string' ? body.preset.trim() : ''
+      let service = host.permissionPresets
+      if (service === undefined && typeof ctx.get === 'function') service = ctx.get('permissionPresets')
+      const names = service && Array.isArray(service.names) ? service.names.slice() : []
+      if (preset === '') {
+        return {
+          ok: names.length > 0,
+          names,
+          current: service && typeof service.defaultPreset === 'string' ? service.defaultPreset : '',
+          note: names.length > 0 ? '' : 'permissionPresets 服务不可用（这条 DSH 没启用权限预设）',
+        }
+      }
+      if (names.length > 0 && !names.includes(preset)) {
+        return { ok: false, error: 'unknown preset: ' + preset, names }
+      }
+      const sessionId = store.sessionOf(convKey)
+      if (sessionId === undefined) return { ok: false, error: '这个会话还没有对应的 DSH 会话' }
+      const sessionController = host.sessionController
+      if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
+      try {
+        await sessionController.prompt({
+          requestId: randomUUID(),
+          sessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text: '/permission ' + preset }],
+          clientTimeZone: 'Asia/Shanghai',
+        }, new AbortController().signal)
+      } catch (error) {
+        return { ok: false, error: 'prompt failed: ' + (error instanceof Error ? error.message : String(error)) }
+      }
+      return { ok: true, switched: preset, names }
+    },
+
     judge: async (body) => {
       await ready
       const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
