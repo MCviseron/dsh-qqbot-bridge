@@ -15,7 +15,6 @@ from aiohttp import web
 
 from runtime_config import RuntimeConfig
 
-PANEL_HTML = Path(__file__).resolve().parent / "panel.html"
 
 
 def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Application:
@@ -41,13 +40,6 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         response.headers["access-control-allow-headers"] = "content-type,x-panel-token"
         response.headers["access-control-allow-methods"] = "GET,POST,OPTIONS"
         return response
-
-    async def index(request: web.Request) -> web.StreamResponse:
-        try:
-            body = PANEL_HTML.read_text(encoding="utf-8")
-        except OSError:
-            return web.Response(text="panel.html missing", status=500)
-        return web.Response(text=body, content_type="text/html", charset="utf-8")
 
     async def state(request: web.Request) -> web.Response:
         if not authorised(request):
@@ -99,7 +91,6 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         return web.json_response({"ok": True, "panel": "dsh-qq-bot", "bot": control.status()})
 
     app.middlewares.append(cors)
-    app.router.add_get("/", index)
     app.router.add_get("/health", health)
     app.router.add_get("/api/state", state)
     app.router.add_get("/api/logs", logs)

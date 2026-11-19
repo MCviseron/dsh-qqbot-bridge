@@ -131,10 +131,57 @@ window.__ModuleLoader__.load({
           h("button", { className: "dsh-qq-bridge__btn", disabled: busy, onClick: function () { setDraft({}); load() } }, "重新读取")))
     }
 
+    // 侧边栏图标（导航栏那一条）
+    function SidebarIcon() {
+      return h("span", { "aria-hidden": "true", style: { fontSize: "16px", lineHeight: 1 } }, "🐟")
+    }
+
+    // 侧边栏点进去的整页：设置 + 进程 + 日志
+    function QQBridgePage() {
+      const [logs, setLogs] = React.useState([])
+      const [paused, setPaused] = React.useState(false)
+      React.useEffect(function () {
+        if (paused) return undefined
+        let stop = false
+        const tick = async function () {
+          try {
+            const response = await fetch(PANEL + "/api/logs?lines=200")
+            const data = await response.json()
+            if (!stop) setLogs(Array.isArray(data.lines) ? data.lines : [])
+          } catch (error) {
+            if (!stop) setLogs(["(日志服务不可达，机器人可能没在运行)"])
+          }
+        }
+        tick()
+        const timer = setInterval(tick, 3000)
+        return function () { stop = true; clearInterval(timer) }
+      }, [paused])
+
+      return h("div", { className: "dsh-qq-bridge" },
+        h(QQBridgeSettings, null),
+        h("div", { className: "dsh-qq-bridge__section" },
+          h("div", { className: "dsh-qq-bridge__sectionTitle" }, "运行日志（最近 200 行）"),
+          h("div", { className: "dsh-qq-bridge__actions" },
+            h("button", { className: "dsh-qq-bridge__btn", onClick: function () { setPaused(!paused) } }, paused ? "继续刷新" : "暂停刷新"),
+            h("button", { className: "dsh-qq-bridge__btn", onClick: function () { setLogs([]) } }, "清屏")),
+          h("pre", { className: "dsh-qq-bridge__log" }, logs.join("\n") || "(暂无日志)")))
+    }
+
     exports.inject = ["slots"]
     exports.apply = function apply(ctx) {
-      ctx.slots.inject("settings.section", function () {
-        return ctx.slots.register({ name: "settings.section", id: "qq-bridge", order: 150, label: function () { return "QQ 机器人" } }, QQBridgeSettings)
+      ctx.slots.inject("sidebar.panellist", function () {
+        const unregister = ctx.slots.register(
+          { name: "sidebar.panellist", id: "qq-bridge", order: 120, label: function () { return "QQ 机器人" } },
+          SidebarIcon,
+        )
+        return function () { unregister() }
+      })
+      ctx.slots.inject("main", function () {
+        const unregister = ctx.slots.register(
+          { name: "main", key: "qq-bridge", order: 120, label: function () { return "QQ 机器人" } },
+          QQBridgePage,
+        )
+        return function () { unregister() }
       })
     }
     return module.exports
