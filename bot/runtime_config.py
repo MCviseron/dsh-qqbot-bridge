@@ -41,6 +41,10 @@ DEFAULTS: Dict[str, Any] = {
     "ack_enabled": False,
     # 群聊主动消息策略：A=主会话内判断（现状），B=独立判断 AI 先筛（测试）
     "group_mode": "A",
+    # 静默时段（晚间闲聊不回）：开关 + 时间段
+    "quiet_enabled": True,
+    # 静默时段（晚间闲聊不回）：开关 + 时间段
+    "quiet_enabled": True,
     # 自动分组：每个 QQ 会话一个独立工作区
     "auto_group": True,
     "auto_group_root": "D:\\dsh-qqbot-temp",

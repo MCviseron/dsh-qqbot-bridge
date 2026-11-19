@@ -115,6 +115,14 @@ class BridgeClient:
             payload={"convKey": conv_key, "transcript": transcript},
         )
 
+    async def permission(self, conv_key: str, preset: Optional[str] = None) -> Dict[str, Any]:
+        """Read or switch the DSH permission preset for one conversation."""
+        return await self._request(
+            "POST",
+            "/permission",
+            payload={"convKey": conv_key, "preset": preset or ""},
+        )
+
     async def pull(self, cursor: Optional[int], wait_ms: int) -> Dict[str, Any]:
         """Long-poll the outbox; cursor=None starts from the current tail."""
         params: Dict[str, Any] = {"wait": max(0, int(wait_ms))}

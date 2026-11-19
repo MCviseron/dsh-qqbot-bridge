@@ -535,6 +535,8 @@ class DSHBot(Client):
         return any(part.strip() == ident for part in raw.split(",") if part.strip())
 
     def _in_quiet_hours(self) -> bool:
+        if not self.rt_bool("quiet_enabled", True):
+            return False
         raw = self.rt_str("quiet_hours", "").strip()
         if not raw or "-" not in raw:
             return False
@@ -2200,6 +2202,30 @@ class DSHBot(Client):
         if lowered in HELP_COMMANDS:
             await self.send_text(conv_key, self.help_text())
             return
+        if lowered == "/pr" or lowered.startswith("/pr "):
+            preset = text[3:].strip()
+            try:
+                result = await self.bridge.permission(conv_key, preset or None)
+            except BridgeError as error:
+                await self.send_text(conv_key, "权限查询失败：" + str(error))
+                return
+            names = result.get("names") or []
+            if preset:
+                if result.get("ok"):
+                    await self.send_text(conv_key, "已切换权限：" + preset + "（以 DSH 的提示为准）")
+                else:
+                    await self.send_text(conv_key, "切换失败：" + str(result.get("error")) + "；可用：" + ", ".join(names))
+                return
+            if not names:
+                await self.send_text(conv_key, str(result.get("note") or result.get("error") or "权限预设不可用"))
+                return
+            lines = ["当前权限预设（实时，来自 DSH）："]
+            for name in names:
+                lines.append("- " + name + ("（默认）" if name == result.get("current") else ""))
+            lines.append("")
+            lines.append("切换：/pr <名字>（转发官方 /permission，不扩大权限）")
+            await self.send_text(conv_key, chr(10).join(lines))
+            return
         if await self.handle_extra_command(conv_key, text, lowered, is_owner=is_owner):
             return
 
@@ -2332,6 +2358,30 @@ class DSHBot(Client):
             return
         if lowered in HELP_COMMANDS:
             await self.send_text(conv_key, self.help_text())
+            return
+        if lowered == "/pr" or lowered.startswith("/pr "):
+            preset = text[3:].strip()
+            try:
+                result = await self.bridge.permission(conv_key, preset or None)
+            except BridgeError as error:
+                await self.send_text(conv_key, "权限查询失败：" + str(error))
+                return
+            names = result.get("names") or []
+            if preset:
+                if result.get("ok"):
+                    await self.send_text(conv_key, "已切换权限：" + preset + "（以 DSH 的提示为准）")
+                else:
+                    await self.send_text(conv_key, "切换失败：" + str(result.get("error")) + "；可用：" + ", ".join(names))
+                return
+            if not names:
+                await self.send_text(conv_key, str(result.get("note") or result.get("error") or "权限预设不可用"))
+                return
+            lines = ["当前权限预设（实时，来自 DSH）："]
+            for name in names:
+                lines.append("- " + name + ("（默认）" if name == result.get("current") else ""))
+            lines.append("")
+            lines.append("切换：/pr <名字>（转发官方 /permission，不扩大权限）")
+            await self.send_text(conv_key, chr(10).join(lines))
             return
         if await self.handle_extra_command(conv_key, text, lowered, is_owner=is_owner):
             return
