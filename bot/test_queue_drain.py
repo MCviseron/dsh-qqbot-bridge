@@ -45,6 +45,7 @@ def make():
     bot._streams = {}
     bot._suppress_reply = set()
     bot._pending_quotes = {}
+    bot._chat_turns = {}
     bot._acks = {}
     bot._msg_seq = 0
     bot._pull_task = None

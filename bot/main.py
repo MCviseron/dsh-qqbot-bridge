@@ -485,6 +485,7 @@ class DSHBot(Client):
         self.pool: Dict[str, PooledMessage] = {}
         self.pool_idx: Dict[str, str] = {}
         self._pending_quotes: Dict[str, Dict[str, Any]] = {}
+        self._chat_turns: Dict[str, bool] = {}
         self._token: Tuple[str, float] = ("", 0.0)
 
     # -- lifecycle ---------------------------------------------------------- #
@@ -1621,6 +1622,7 @@ class DSHBot(Client):
         if chat and text.strip():
             # 闲聊只交代场景，不规定长度和工具用法
             text = "【闲聊模式】简短口语回 1~3 句，不要调用工具、不要复述过程。" + chr(10) + text
+        self._chat_turns[conv_key] = bool(chat)
         try:
             await self.bridge.inbound(
                 conv_key=conv_key,
@@ -1800,9 +1802,14 @@ class DSHBot(Client):
                 await self._drain_queued(conv_key)
                 return
             if NO_REPLY_MARK in text:
-                log.info("agent stayed silent in %s", conv_key)
-                await self._drain_queued(conv_key)
-                return
+                if self._chat_turns.pop(conv_key, False):
+                    log.info("agent stayed silent in %s (chatter judge)", conv_key)
+                    await self._drain_queued(conv_key)
+                    return
+                # A real question (@ or private chat) must never be answered with silence.
+                log.warning("model tried to stay silent on a directed message in %s; answering instead", conv_key)
+                text = text.replace(NO_REPLY_MARK, "").strip() or "在的，你说。"
+            self._chat_turns.pop(conv_key, None)
             text = await self._dispatch_files(conv_key, text)
             if not text:
                 used = f"（调用了 {len(tools)} 个工具：{'、'.join(tools[:8])}）" if tools else ""

@@ -79,6 +79,7 @@ def make_bot():
     bot.owner_openid = "OWNER"
     bot.rt = _RT()
     bot.pool = {}
+    bot._chat_turns = {}
     bot.pool_idx = {}
     bot._pending_quotes = {}
     bot._suppress_reply = set()

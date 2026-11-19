@@ -49,6 +49,7 @@ def make_bot(owner_bound=True):
     bot.config = config
     bot.api = StubAPI()
     bot.pool = {}
+    bot._chat_turns = {}
     bot.pool_idx = {}
     bot._pending_quotes = {}
     bot.bridge = StubBridge()

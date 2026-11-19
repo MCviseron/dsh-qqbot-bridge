@@ -23,6 +23,7 @@ def make():
     bot.config = config; bot.api = StubAPI(); bot.bridge = StubBridge()
     bot.state = type("S", (), {"owner_openid": "OWNER", "group_owners": {}, "save": lambda self: None})()
     bot.pool = {}
+    bot._chat_turns = {}
     bot.pool_idx = {}
     bot._pending_quotes = {}
     bot.owner_openid = "OWNER"
