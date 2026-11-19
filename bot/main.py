@@ -455,6 +455,7 @@ class DSHBot(Client):
             self.state.save()
         self.targets: Dict[str, Target] = {}
         self.pending_approvals: Dict[str, Dict[str, Any]] = {}
+        self._decided: Dict[str, str] = {}
         self._streams: Dict[str, Dict[str, Any]] = {}
         self._suppress_reply: set = set()
         self._streamed_turns: Dict[str, float] = {}
@@ -1970,13 +1971,18 @@ class DSHBot(Client):
         if chosen is None:
             await self.send_text(conv_key, "现在没有待审批的操作。")
             return
-        self.pending_approvals.pop(chosen, None)
+        outcome = self.pending_approvals.pop(chosen, None) or {}
+        tool_name = str(outcome.get("toolName") or "")
         try:
             await self.bridge.approve(chosen, decision)
         except BridgeError as error:
             await self.send_text(conv_key, f"审批没能送达 DSH：{error}")
             return
-        await self.send_text(conv_key, "已允许，继续执行。" if decision == "allow" else "已拒绝，本轮操作不会执行。")
+        self._decided[chosen] = decision
+        while len(self._decided) > 100:
+            self._decided.pop(next(iter(self._decided)), None)
+        label = ("✅ 已允许" if decision == "allow" else "⛔ 已拒绝") + (f"（{tool_name}）" if tool_name else "")
+        await self.send_text(conv_key, label + ("，继续执行。" if decision == "allow" else "，本轮操作不会执行。"))
 
     async def _buffer_chatter(self, conv_key: str, sender: str, text: str) -> None:
         """Collect group chatter; a judge run decides later whether to join in."""
@@ -2345,6 +2351,10 @@ class DSHBot(Client):
             return
         decision, approval_id = parse_decision(str(button_data))
         if decision is None:
+            await self._interaction_result(interaction, 1)
+            return
+        if approval_id and approval_id in self._decided:
+            log.info("approval %s already decided (%s); ignoring repeat click", short_id(approval_id), self._decided[approval_id])
             await self._interaction_result(interaction, 1)
             return
         conv_key = f"c2c:{clicker}" if clicker else self._owner_conv()
