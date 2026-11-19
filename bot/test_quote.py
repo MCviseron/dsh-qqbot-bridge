@@ -215,6 +215,17 @@ async def main():
     none_ref.raw = {"content": "没有引用的普通私聊"}
     failures += check("私聊无 message_reference 不算引用", bot._quote_of(none_ref) is None)
 
+
+    # --- 引用图片：取出 URL 并交给下载流程 ---
+    failures += check("attachment url 解析", M._attachment_url({"url": "https://x/a.png"}) == "https://x/a.png"
+                      and M._attachment_url({"file_url": "https://x/b.png"}) == "https://x/b.png"
+                      and M._attachment_url("https://x/c.png") == "https://x/c.png"
+                      and M._attachment_url({}) is None)
+
+    img_quote = bot._quote_of(Msg(elements=[{"message_type": 101, "attachments": [{"url": "https://cdn/x.jpg"}], "msg_idx": "REFIDX_IMGSAMPLE01"}]))
+    failures += check("引用图片带出 urls", img_quote and img_quote["kind"] == "image" and img_quote["urls"] == ["https://cdn/x.jpg"], str(img_quote))
+    failures += check("没有 url 时不下载", (await bot._quote_images({"kind": "image", "urls": []})) == [])
+
     print("ALL PASS" if failures == 0 else f"{failures} FAILED")
     return 0 if failures == 0 else 1
 
