@@ -412,10 +412,22 @@ export function apply(ctx, rawConfig) {
       if (names.length > 0 && !names.includes(preset)) {
         return { ok: false, error: 'unknown preset: ' + preset, names }
       }
-      const sessionId = store.sessionOf(convKey)
-      if (sessionId === undefined) return { ok: false, error: '这个会话还没有对应的 DSH 会话' }
       const sessionController = host.sessionController
       if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
+      let sessionId = store.sessionOf(convKey)
+      if (sessionId === undefined) {
+        // 还没聊过：先给这个 QQ 会话建 DSH 会话（自动工作区开启时自带独立目录），
+        // 否则 /pr 没法把命令投递进去。
+        try {
+          const created = await sessionController.create({
+            cwd: await workspaceFor(convKey, { autoGroup: body?.autoGroup, autoGroupRoot: body?.autoGroupRoot }),
+          })
+          sessionId = String(created.sessionId)
+          await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
+        } catch (error) {
+          return { ok: false, error: 'create session failed: ' + (error instanceof Error ? error.message : String(error)) }
+        }
+      }
       try {
         await sessionController.prompt({
           requestId: randomUUID(),
