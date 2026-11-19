@@ -2056,11 +2056,11 @@ class DSHBot(Client):
             audience = f"最后一句来自 {last_speaker}，里面叫了你的名字（别名：{self._alias_list()}），是在跟你说话。"
         elif prev_speaker and prev_speaker != last_speaker:
             audience = (
-                f"最后一句来自 {last_speaker}，上一句来自 {prev_speaker} —— 看起来是"
-                f"{prev_speaker} 和 {last_speaker} 在他们之间对话，你只是旁观者。"
+                f"最后一句来自 {last_speaker}，上一句来自 {prev_speaker} —— "
+                f"这是 {prev_speaker} 和 {last_speaker} 之间的对话。"
             )
         else:
-            audience = f"最后一句来自 {last_speaker}，没有点名你，也没看出是在问你。"
+            audience = f"最后一句来自 {last_speaker}。"
 
         prompt = chr(10).join(
             [
@@ -2071,11 +2071,10 @@ class DSHBot(Client):
                 "这之后群里在聊：",
                 *lines,
                 "",
-                "像群里的一员那样判断：",
-                f"- 如果有人叫你的名字/别名（{self._alias_list()}）或者明显在问你，就正常回答；",
-                "- 如果他们在接着你的话、或者问到你了，就顺着聊 1~2 句口语；",
-                "- 如果是两个群友在互相说话：不要把自己当成被邀请或被回答的人，不要替他们接话；想参与就轻一点，不想说就只回 [NO_REPLY]；",
-                "- 如果你刚说过类似的话、或者插不上嘴，也可以只回 [NO_REPLY]；",
+                "像群里的一员那样判断——没人点名不代表你必须沉默：",
+                f"- 想说话就说：有人叫你/别名（{self._alias_list()}）、问到你了、聊到你熟的或感兴趣的事、想吐槽想接梗想补充，都可以正常参与；",
+                "- 不想说就不说：别人在互相对话、话题你没兴趣、或者你刚说过类似的话，只回 [NO_REPLY]；",
+                "- 别人互相聊的时候，别把他们的话当成对你的邀请，也不要替他们回答；想参与就说得轻一点；",
                 "- 不要重复自己说过的内容，不要总结/复述别人的聊天，不要客套，不要写成报告。",
             ]
         )

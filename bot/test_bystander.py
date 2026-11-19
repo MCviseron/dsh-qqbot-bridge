@@ -27,16 +27,16 @@ async def main():
 
     two_people = await prompt_for(["群友B0001: 好无聊啊", "群友A0002: 那我们去玩游戏吧"])
     failures += check("两人对话 -> 标注旁观者",
-                      "旁观者" in two_people and "群友A0002" in two_people, two_people[:60])
-    failures += check("两人对话时禁止抢话", "不要替他们接话" in two_people)
-    failures += check("保留原格式与判断段", "像群里的一员那样判断：" in two_people)
+                      "之间的对话" in two_people and "群友A0002" in two_people, two_people[:60])
+    failures += check("两人对话时禁止抢话/替答", "不要替他们回答" in two_people and "别把他们的话当成对你的邀请" in two_people)
+    failures += check("保留原格式与判断段", "像群里的一员那样判断" in two_people)
 
     called = await prompt_for(["群友B0001: 好无聊啊", "群友A0002: 大肥鱼你觉得呢"])
     failures += check("最后一句叫名字 -> 跳过判断直接作答",
                       "【群聊插话判断】" not in called and "大肥鱼你觉得呢" in called, called[:60])
 
     solo = await prompt_for(["群友B0001: 今天好热"])
-    failures += check("单人独白 -> 标注没点名你", "没有点名你" in solo, solo[:60])
+    failures += check("单人独白 -> 只陈述事实不劝沉默", "最后一句来自" in solo and "沉默" in solo, solo[:60])
 
     print("ALL PASS" if failures == 0 else f"{failures} FAILED")
     return 0 if failures == 0 else 1

@@ -126,7 +126,7 @@ async def main():
     bot.chatter[CONV] = Chatter(lines=["群友A: 今晚开黑"], first_at=time.time(), last_judge_at=0.0)
     await bot._maybe_judge(CONV, force_timer=True)
     sent = bot.bridge.calls[-1]["text"] if bot.bridge.calls else ""
-    failures += check("判断提示词给出说话对象并留出口", "没有点名你" in sent and "NO_REPLY" in sent, "")
+    failures += check("判断提示词给出说话对象并留出口", "最后一句来自" in sent and "NO_REPLY" in sent, "")
 
     print("ALL PASS" if failures == 0 else f"{failures} FAILED")
     return 0 if failures == 0 else 1
