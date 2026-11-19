@@ -110,3 +110,30 @@
 
 - **DSH 左侧导航栏「QQ 机器人」** —— 开关、数字、凭据、启停按钮、实时日志（最近 200 行）；
 - DSH 内：设置 → 「QQ 机器人」——同一批开关（官方样式、官方 token），与网页设置**并存**，改哪个都生效。
+## 群聊 @ 人的实现与限制（对齐官方 text-chain 文档）
+
+| 能力 | 嵌入文本 | 支持的消息类型 | 条件 |
+|---|---|---|---|
+| @用户 | <qqbot-at-user id="member_openid" /> | 仅 markdown | id 填被 @ 群成员的 member_openid |
+| @全部成员 | <qqbot-at-everyone /> | 文本 / markdown | 机器人须为群管理员，每群每天 1 次 |
+
+旧协议 <@userid>、@everyone 官方已标记即将弃用；频道的 <@!openid> 对群/单聊无效。
+
+本项目做法：收到群消息时记录 conv -> {群友XXXX: member_openid}；发送前把 @群友XXXX 换成 at 标签并自动切 markdown；拿不到 openid 的成员保持文本，不发坏标签；成员接口 GET /v2/groups/{group_openid}/members 实测 40012010（应用无接口访问权限），开通后才可能补全成员表。
+
+## 静默时段（quiet_enabled / quiet_hours）
+
+- quiet_enabled（默认 true）：关掉后静默时段完全失效；
+- quiet_hours：HH:MM-HH:MM，支持跨午夜（如 23:30-07:00），按本机时间判断；
+- 只影响群里主动插话（Plan A/B 判断）；@ 与私聊不受影响；
+- 设置页该行会实时显示当前是否静默与下次切换时间。
+
+## 启动方式（重要）
+
+- 不要用 DSH 的后台任务启动机器人：会占住 DSH 重启，任务被杀还会带走守护进程；
+- 正确做法：双击 bot/run-bot.bat（内部 pythonw，无控制台、分离进程），或 Start-Process pythonw.exe -ArgumentList '-u','main.py','--supervise' -WindowStyle Hidden；
+- 看日志：DSH 左侧导航栏「QQ 机器人」的运行日志，或 bot/logs/viseron_qqbotpy.log。
+
+## 新增设置项的硬规则
+
+任何新设置项必须同时加进 bot/runtime_config.py 的 DEFAULTS，否则 /api/config 保存时被静默丢弃（页面表现为“开了又变回关”）。插件侧对应 plugin/lib/index.js 的 DEFAULT_CONFIG。
