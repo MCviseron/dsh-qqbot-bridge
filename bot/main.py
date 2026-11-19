@@ -1867,7 +1867,8 @@ class DSHBot(Client):
         # Inline directives ([[send_file: ...]], [[sticker: ...]]) are executed by
         # the durable reply path only; streaming would show them as literal text.
         if SEND_FILE_MARK.search(str(state["text"])) or STICKER_MARK.search(str(state["text"])):
-            self._streams.pop(conv_key, None)
+            # Close the bubble first: aborting a stream mid-frame left a truncated message.
+            await self._finish_stream(conv_key)
             return
 
         async def send_frame(done: bool) -> bool:
@@ -1920,8 +1921,9 @@ class DSHBot(Client):
                 return
         if final:
             ok = await send_frame(True)
-            self._streams.pop(conv_key, None)
+            state = self._streams.pop(conv_key, None) or state
             if ok:
+                await self._dispatch_files(conv_key, str(state.get("text") or ""))
                 if state.get("turn_id"):
                     self._streamed_turns[str(state["turn_id"])] = time.time()
                     if len(self._streamed_turns) > 50:
