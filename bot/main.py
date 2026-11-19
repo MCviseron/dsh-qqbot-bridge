@@ -1631,6 +1631,8 @@ class DSHBot(Client):
                 images=images,
                 chime=chime,
                 quote=quote,
+                auto_group=self.rt_bool("auto_group", True),
+                auto_group_root=self.rt_str("auto_group_root", ""),
             )
         except BridgeError as error:
             log.error("inbound failed: %s", error)

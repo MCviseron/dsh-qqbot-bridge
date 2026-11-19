@@ -41,6 +41,9 @@ DEFAULTS: Dict[str, Any] = {
     "ack_enabled": False,
     # 群聊主动消息策略：A=主会话内判断（现状），B=独立判断 AI 先筛（测试）
     "group_mode": "A",
+    # 自动分组：每个 QQ 会话一个独立工作区
+    "auto_group": True,
+    "auto_group_root": "D:\\dsh-qqbot-temp",
     # 消息池（引用解析 + /撤回 + 插话判断的上下文窗口）
     "pool_ttl_s": 1800,
     "pool_max": 100,

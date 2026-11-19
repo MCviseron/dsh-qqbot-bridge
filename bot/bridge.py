@@ -81,6 +81,8 @@ class BridgeClient:
         context_only: bool = False,
         chime: bool = False,
         quote: Optional[Dict[str, Any]] = None,
+        auto_group: Optional[bool] = None,
+        auto_group_root: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Hand one QQ message to DSH; the answer arrives through :meth:`pull`.
 
@@ -100,6 +102,8 @@ class BridgeClient:
                 "contextOnly": bool(context_only),
                 "chime": bool(chime),
                 "quote": quote,
+                "autoGroup": auto_group,
+                "autoGroupRoot": auto_group_root,
             },
         )
 

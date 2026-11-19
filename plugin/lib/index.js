@@ -138,9 +138,10 @@ export function apply(ctx, rawConfig) {
   }
 
   // One workspace per QQ conversation when auto-grouping is on; falls back to cwd.
-  const workspaceFor = async (convKey) => {
-    if (config.autoGroup !== true) return config.cwd
-    const root = String(config.autoGroupRoot || 'D:\\dsh-qqbot-temp')
+  const workspaceFor = async (convKey, overrides) => {
+    const enabled = overrides?.autoGroup === undefined ? config.autoGroup === true : overrides.autoGroup === true
+    if (!enabled) return config.cwd
+    const root = String(overrides?.autoGroupRoot || config.autoGroupRoot || 'D:\\dsh-qqbot-temp')
     const name = convKey.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'qq'
     const dir = join(root, name)
     try {
@@ -346,7 +347,7 @@ export function apply(ctx, rawConfig) {
 
       let sessionId = store.sessionOf(convKey)
       if (sessionId === undefined) {
-        const created = await sessionController.create({ cwd: await workspaceFor(convKey) })
+        const created = await sessionController.create({ cwd: await workspaceFor(convKey, { autoGroup: body?.autoGroup, autoGroupRoot: body?.autoGroupRoot }) })
         sessionId = String(created.sessionId)
         log(`session created: ${convKey} → ${sessionId}`)
       }
