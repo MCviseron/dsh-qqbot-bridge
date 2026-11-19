@@ -46,6 +46,7 @@ def make():
     bot._suppress_reply = set()
     bot._pending_quotes = {}
     bot._chat_turns = {}
+    bot.member_index = {}
     bot._acks = {}
     bot._msg_seq = 0
     bot._pull_task = None

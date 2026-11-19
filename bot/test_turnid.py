@@ -24,6 +24,7 @@ def make():
     bot.state = type("S", (), {"owner_openid": "OWNER", "group_owners": {}, "save": lambda self: None})()
     bot.pool = {}
     bot._chat_turns = {}
+    bot.member_index = {}
     bot.pool_idx = {}
     bot._pending_quotes = {}
     bot.owner_openid = "OWNER"

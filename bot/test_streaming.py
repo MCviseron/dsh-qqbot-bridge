@@ -51,6 +51,7 @@ def make_bot():
     bot.api = StubAPI()
     bot.pool = {}
     bot._chat_turns = {}
+    bot.member_index = {}
     bot.pool_idx = {}
     bot._pending_quotes = {}
     bot._streamed_turns = {}

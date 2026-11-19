@@ -84,6 +84,7 @@ def make_bot():
     bot.pool_idx = {}
     bot._streamed_turns = {}
     bot._chat_turns = {}
+    bot.member_index = {}
     bot._suppress_reply = set()
     bot._urgent_tasks = set()
     bot._pull_task = None

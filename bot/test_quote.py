@@ -80,6 +80,7 @@ def make_bot():
     bot.rt = _RT()
     bot.pool = {}
     bot._chat_turns = {}
+    bot.member_index = {}
     bot.pool_idx = {}
     bot._pending_quotes = {}
     bot._suppress_reply = set()

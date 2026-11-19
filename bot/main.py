@@ -486,6 +486,7 @@ class DSHBot(Client):
         self.pool_idx: Dict[str, str] = {}
         self._pending_quotes: Dict[str, Dict[str, Any]] = {}
         self._chat_turns: Dict[str, bool] = {}
+        self.member_index: Dict[str, Dict[str, str]] = {}
         self._token: Tuple[str, float] = ("", 0.0)
 
     # -- lifecycle ---------------------------------------------------------- #
@@ -1261,19 +1262,36 @@ class DSHBot(Client):
         self._pool_sent(target, result, chunk)
         return result
 
-    def _readable_at(self, text: str) -> str:
-        """QQ groups only support @everyone; single-person @s are rendered as readable aliases."""
+    def _readable_at(self, text: str, target: Optional[Target] = None) -> str:
+        """Per QQ docs: 群聊 @人用 <qqbot-at-user id="member_openid"/>，仅 markdown 消息支持。"""
         if not text:
             return text
         text = text.replace("@全体", AT_EVERYONE_TOKEN).replace("@everyone", AT_EVERYONE_TOKEN)
-        return OPENID_RE.sub(lambda match: "@群友" + match.group(1)[-6:].upper(), text)
+
+        def alias(text_in: str) -> str:
+            return OPENID_RE.sub(lambda match: "@群友" + match.group(1)[-6:].upper(), text_in)
+
+        if target is None or target.kind != "group":
+            return alias(text)
+        known = self.member_index.get(target.conv_key) or {}
+        if not known:
+            return alias(text)
+
+        def replace_guard(match: "_re.Match[str]") -> str:
+            key = match.group(1).upper()
+            openid = known.get(key)
+            return f'<qqbot-at-user id="{openid}" />' if openid else match.group(0)
+
+        return _AT_ALIAS_RE.sub(replace_guard, alias(text))
 
     async def _send_chunk(self, target: Target, chunk: str, *, keyboard: Optional[Dict[str, Any]]) -> None:
         # QQ renders 按钮 only under a Markdown message (msg_type=2) for group/
         # C2C chats, so a keyboard forces the markdown path.
-        chunk = self._readable_at(chunk)
+        chunk = self._readable_at(chunk, target)
         md_auto = self.rt_bool("md_auto", self.config.md_auto)
-        use_markdown = keyboard is not None or (md_auto and looks_like_markdown(chunk))
+        # @ 标签只有 markdown 消息支持（QQ 文档：文本交互 → 使用 @ 能力）
+        wants_at = "<qqbot-at-" in chunk
+        use_markdown = keyboard is not None or wants_at or (md_auto and looks_like_markdown(chunk))
         msg_id = target.passive_slot()
         try:
             await self._post(target, chunk, keyboard=keyboard, msg_id=msg_id, markdown=use_markdown)
@@ -2174,6 +2192,8 @@ class DSHBot(Client):
             member_openid = message.author.member_openid or message.author.user_openid or ""
         text = clean_content(message.content)
         self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
+        if member_openid:
+            self.member_index.setdefault(conv_key, {})[short_id(member_openid).upper()] = member_openid
         is_owner = self._is_owner_group(group_openid, member_openid)
         if not is_owner and member_openid:
             is_owner = await self._bind_group_owner_by_role(group_openid, member_openid)
@@ -2280,6 +2300,8 @@ class DSHBot(Client):
                 return
             self._remember_id(message.id)
             self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
+            if member_openid:
+                self.member_index.setdefault(conv_key, {})[short_id(member_openid).upper()] = member_openid
             log.info(
                 "group message from %s: %r (keys=%s, mentions=%d)",
                 short_id(member_openid),
@@ -2592,7 +2614,8 @@ def _scene_ext(scene):
 
 
 AT_EVERYONE_TOKEN = "<qqbot-at-everyone />"
-OPENID_RE = re.compile(r"@?(?<![0-9A-Za-z])([0-9A-Fa-f]{6,32})(?![0-9A-Za-z])")
+OPENID_RE = re.compile(r"@?(?<!群友)(?<![0-9A-Za-z])([0-9A-Fa-f]{6,32})(?![0-9A-Za-z])")
+_AT_ALIAS_RE = re.compile(r"@群友([0-9A-Fa-f]{4,8})")
 
 
 def _decode_line(raw: bytes) -> str:
