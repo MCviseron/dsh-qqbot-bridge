@@ -76,6 +76,26 @@ window.__ModuleLoader__.load({
     const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group"]
       .map(function (key) { return [key, LABELS[key][0], LABELS[key][1]] })
 
+    // 静默时段：开始/结束时间 + 最右侧开关，并实时显示"当前是否静默、下次切换"
+    function parseQuiet(value) {
+      const text = String(value || "23:30-07:00")
+      const parts = text.split("-")
+      const ok = parts.length === 2 && /^\d{1,2}:\d{2}$/.test(parts[0].trim()) && /^\d{1,2}:\d{2}$/.test(parts[1].trim())
+      return ok ? [parts[0].trim(), parts[1].trim()] : ["23:30", "07:00"]
+    }
+    function minutesOf(text) { const p = text.split(":"); return Number(p[0]) * 60 + Number(p[1]) }
+    function quietStatus(value) {
+      const pair = parseQuiet(value)
+      const start = minutesOf(pair[0])
+      const end = minutesOf(pair[1])
+      const now = new Date()
+      const mins = now.getHours() * 60 + now.getMinutes()
+      const inQuiet = start <= end ? (mins >= start && mins < end) : (mins >= start || mins < end)
+      const next = inQuiet ? end : start
+      const label = String(Math.floor(next / 60)).padStart(2, "0") + ":" + String(next % 60).padStart(2, "0")
+      return { inQuiet, label }
+    }
+
     const NUMBERS = [
       ["chatter_batch","攒够几条触发判断",1,30], ["chatter_max_s","最长等待（秒）",5,600],
       ["chatter_cooldown_s","判断后冷却（秒）",0,1800], ["bot_say_memory_s","「最近说过」记忆（秒）",30,3600],
@@ -89,7 +109,7 @@ window.__ModuleLoader__.load({
     const TEXTS = [
       ["group_mode","群聊主动消息模式（A / B）"], ["group_allowlist","群白名单（openid，逗号分隔）"],
       ["c2c_allowlist","私聊白名单（同上）"], ["bot_aliases","群内别名（逗号分隔）"],
-      ["quiet_hours","静默时段（如 23:30-07:00）"], ["appid","APPID（留空=用 config.json）"],
+["appid","APPID（留空=用 config.json）"],
       ["appsecret","APPSECRET（留空=不变，需重启）"],
       ["auto_group_root","自动分组根目录（如 D:\\dsh-qqbot-temp）"],
       ,
@@ -200,6 +220,14 @@ window.__ModuleLoader__.load({
                 onChange: function (event) { setValue(item[0], Number(event.target.value)) },
               }))
           }),
+          h(QuietRow, {
+            key: "quiet-hours",
+            value: value("quiet_hours"),
+            checked: !!value("quiet_enabled"),
+            disabled: busy,
+            onChange: function (next) { setValue("quiet_hours", next) },
+            onChange2: function (next) { setValue("quiet_enabled", next) },
+          }),
           h("div", { style: T.sectionTitle }, "过滤与凭据"),
           TEXTS.map(function (item) {
             return h(Row, { key: item[0], title: item[1] },
@@ -219,6 +247,33 @@ window.__ModuleLoader__.load({
             h("button", { style: T.btn, onClick: function () { setLogs([]) } }, "清屏")),
           h("pre", { style: T.log }, logs.join("\n") || "(暂无日志)")
         ))
+    }
+
+    function QuietRow(props) {
+      const value = String(props.value || "23:30-07:00")
+      const pair = parseQuiet(value)
+      const status = quietStatus(value)
+      const setRange = function (index, next) {
+        const parts = parseQuiet(value).slice()
+        parts[index] = next || parts[index]
+        props.onChange(parts[0] + "-" + parts[1])
+      }
+      const timeInput = function (index, label) {
+        return h("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } },
+          h("span", { style: T.hint }, label),
+          h("input", {
+            type: "time", value: pair[index], style: Object.assign({}, T.input, { width: 108, textAlign: "center" }),
+            onChange: function (event) { setRange(index, event.target.value) },
+          }))
+      }
+      return h("div", { style: Object.assign({}, T.row, { alignItems: "flex-start" }) },
+        h("div", { style: T.labelBox },
+          h("span", { style: T.title }, "静默时段（晚间群聊闲聊不回）"),
+          h("span", { style: T.hint }, "按本机时间：静默时段内群里不主动插话，@ 与私聊照常回复"),
+          h("span", { style: T.hint }, (status.inQuiet ? "当前为静默" : "当前不在静默") + " · 下次切换 " + status.label),
+          h("div", { style: Object.assign({}, T.actions, { marginTop: 8 }) },
+            timeInput(0, "开始"), h("span", { style: T.hint }, "至"), timeInput(1, "结束"))),
+        h(Switch, { checked: !!props.checked, label: "静默时段生效", disabled: props.disabled, onChange: props.onChange2 }))
     }
 
     function SidebarIcon() {
