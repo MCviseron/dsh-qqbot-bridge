@@ -86,9 +86,15 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         except Exception:
             body = {}
         path = str((body or {}).get("path") or "")
-        target = Path(path).expanduser()
+        target = Path(path).expanduser().resolve()
+        allowed = Path(str(runtime.get("auto_group_root") or "")).expanduser().resolve()
         if path.strip() == "" or not target.exists():
             return web.json_response({"ok": False, "error": "no such folder"}, status=400)
+        if str(allowed) not in ("", ".", str(Path("."))):
+            try:
+                target.relative_to(allowed)
+            except ValueError:
+                return web.json_response({"ok": False, "error": "outside auto_group_root"}, status=403)
         try:
             if os.name == "nt":
                 os.startfile(str(target))  # noqa: S606 - user-invoked

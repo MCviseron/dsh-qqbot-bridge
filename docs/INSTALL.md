@@ -114,7 +114,7 @@ cd bot && python -u main.py --supervise
 | 图片发过去 DSH 报 `INVALID_IMAGE` | QQ CDN 偶发截断；机器人会重试 3 次并做 Pillow 归一化，仍失败会在日志里标 `bad-*.bin` |
 | 群里 @ 它没反应 | 确认「群聊响应」和「群全量消息」开关；全量模式下只有 @ 或 `/命令` 才会走工作模式 |
 | `get_group_member` 报 `40012010 应用无接口访问权限` | 内邀能力未开通；把 `OWNER_ROLE_CHECK=0`，用群里 `/绑定` 认主 |
-| 设置页打不开 | 别用 `file://` 打开 `panel.html`；用 `http://127.0.0.1:39062/?t=<BRIDGE_TOKEN>` |
+| 左侧没有「QQ 机器人」 | 说明插件没加载：检查 profile 里 `dsh-qq-bridge` 的 link 与 `cordis.patch.yml` 条目，然后重启 DSH |
 
 ---
 
