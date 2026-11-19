@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -76,6 +77,27 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         message = await control.perform(action)
         return web.json_response({"ok": True, "action": action, "message": message, "bot": control.status()})
 
+    async def open_folder(request: web.Request) -> web.Response:
+        """Open a workspace folder in Explorer (local convenience only)."""
+        if not authorised(request):
+            return web.json_response({"ok": False, "error": "bad token"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        path = str((body or {}).get("path") or "")
+        target = Path(path).expanduser()
+        if path.strip() == "" or not target.exists():
+            return web.json_response({"ok": False, "error": "no such folder"}, status=400)
+        try:
+            if os.name == "nt":
+                os.startfile(str(target))  # noqa: S606 - user-invoked
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+        except Exception as error:
+            return web.json_response({"ok": False, "error": str(error)}, status=500)
+        return web.json_response({"ok": True})
+
     async def logs(request: web.Request) -> web.Response:
         if not authorised(request):
             return web.json_response({"ok": False, "error": "bad token"}, status=401)
@@ -96,6 +118,7 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
     app.router.add_get("/api/logs", logs)
     app.router.add_post("/api/config", update_config)
     app.router.add_post("/api/manage", manage)
+    app.router.add_post("/api/open-folder", open_folder)
     return app
 
 

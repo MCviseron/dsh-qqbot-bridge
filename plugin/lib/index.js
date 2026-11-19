@@ -30,6 +30,8 @@ export const DEFAULT_CONFIG = {
   argumentPreviewChars: 600,
   quoteContextChars: 300,
   historyMax: 200,
+  autoGroup: true,
+  autoGroupRoot: 'D:\\dsh-qqbot-temp',
   streamEnabled: true,
   streamIntervalMs: 250,
   autoStartBot: true,
@@ -133,6 +135,21 @@ export function apply(ctx, rawConfig) {
     const cap = Number.isFinite(config.historyMax) ? config.historyMax : 200
     if (list.length > cap) list.splice(0, list.length - cap)
     history.set(convKey, list)
+  }
+
+  // One workspace per QQ conversation when auto-grouping is on; falls back to cwd.
+  const workspaceFor = async (convKey) => {
+    if (config.autoGroup !== true) return config.cwd
+    const root = String(config.autoGroupRoot || 'D:\\dsh-qqbot-temp')
+    const name = convKey.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'qq'
+    const dir = join(root, name)
+    try {
+      await mkdir(dir, { recursive: true })
+      return dir
+    } catch (error) {
+      log(`workspace mkdir failed (${dir}): ${error instanceof Error ? error.message : String(error)}`)
+      return config.cwd
+    }
   }
 
   const remember = (convKey, line) => {
@@ -329,7 +346,7 @@ export function apply(ctx, rawConfig) {
 
       let sessionId = store.sessionOf(convKey)
       if (sessionId === undefined) {
-        const created = await sessionController.create({ cwd: config.cwd })
+        const created = await sessionController.create({ cwd: await workspaceFor(convKey) })
         sessionId = String(created.sessionId)
         log(`session created: ${convKey} → ${sessionId}`)
       }

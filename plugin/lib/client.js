@@ -70,9 +70,10 @@ window.__ModuleLoader__.load({
       ack_enabled: ["“还在处理”占位提示", "会打断流式输出，默认关"],
       quote_enabled: ["识别引用消息", "引用时把被引用原文和来源一起带给模型"],
       capture_enabled: ["允许截屏", "/截图、/窗口 是否可用"],
+      autoGroup: ["自动分组（每个会话独立工作区）", "关闭则所有会话共用同一个工作目录"],
     }
 
-    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled"]
+    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","autoGroup"]
       .map(function (key) { return [key, LABELS[key][0], LABELS[key][1]] })
 
     const NUMBERS = [
@@ -90,6 +91,8 @@ window.__ModuleLoader__.load({
       ["c2c_allowlist","私聊白名单（同上）"], ["bot_aliases","群内别名（逗号分隔）"],
       ["quiet_hours","静默时段（如 23:30-07:00）"], ["appid","APPID（留空=用 config.json）"],
       ["appsecret","APPSECRET（留空=不变，需重启）"],
+      ["autoGroupRoot","自动分组根目录（如 D:\\dsh-qqbot-temp）"],
+      ["autoGroup","自动分组开关（true/false）"],
     ]
 
     function QQBridgePage() {
@@ -170,7 +173,19 @@ window.__ModuleLoader__.load({
             h("button", { style: Object.assign({}, T.btn, T.btnPrimary), disabled: busy, onClick: function () { manage("start") } }, "启动"),
             h("button", { style: T.btn, disabled: busy, onClick: function () { manage("restart") } }, "重启"),
             h("button", { style: T.btn, disabled: busy, onClick: function () { manage("stop") } }, "关闭（不拉起）"),
-            h("button", { style: T.btn, onClick: function () { window.open("https://q.qq.com/qqbot/", "_blank", "noopener") } }, "QQ 开放平台")),
+            h("button", { style: T.btn, onClick: function () { window.open("https://q.qq.com/qqbot/", "_blank", "noopener") } }, "QQ 开放平台"),
+            h("button", {
+              style: T.btn,
+              onClick: async function () {
+                const target = String(config.autoGroupRoot || "D:\\dsh-qqbot-temp")
+                try {
+                  const result = await call("/api/open-folder", { method: "POST", body: JSON.stringify({ path: target }) })
+                  setMessage(result.ok ? "已打开 " + target : "打不开：" + (result.error || target))
+                } catch (error) {
+                  setMessage("打不开：" + target)
+                }
+              },
+            }, "打开分组文件夹")),
           h("div", { style: T.sectionTitle }, "开关"),
           SWITCHES.map(function (item) {
             return h(Row, { key: item[0], title: item[1], hint: item[2] },
