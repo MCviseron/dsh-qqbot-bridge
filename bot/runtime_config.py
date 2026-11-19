@@ -37,6 +37,8 @@ DEFAULTS: Dict[str, Any] = {
     "c2c_allowlist": "",
     "bot_aliases": "蓝色大肥鱼,大肥鱼,机器人,DSH,dsh",
     "quiet_hours": "",
+    # 「还在处理，请稍等…」这种占位提示：默认关闭（会打断流式、影响观感）
+    "ack_enabled": False,
     # 群聊主动消息策略：A=主会话内判断（现状），B=独立判断 AI 先筛（测试）
     "group_mode": "A",
     # 消息池（引用解析 + /撤回 + 插话判断的上下文窗口）

@@ -1371,6 +1371,8 @@ class DSHBot(Client):
 
     # -- ack watchdog ------------------------------------------------------- #
     def _arm_ack(self, conv_key: str) -> None:
+        if not self.rt_bool("ack_enabled", False):
+            return
         self._cancel_ack(conv_key)
         ack_delay = self.rt_float("ack_delay_s", self.config.ack_delay_s)
         if ack_delay <= 0 or not self.config.ack_text:
@@ -1393,6 +1395,8 @@ class DSHBot(Client):
     # -- DSH ---------------------------------------------------------------- #
     def _release_if_stuck(self, conv_key: str) -> None:
         """A turn that never returns must not silence the conversation forever."""
+        if not self.rt_bool("ack_enabled", False):
+            return
         if self._inflight.get(conv_key, 0) <= 0:
             return
         started = self._inflight_at.get(conv_key, 0.0)
