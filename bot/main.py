@@ -324,11 +324,11 @@ def approval_keyboard(approval_id: str) -> Dict[str, Any]:
             "id": data,
             "render_data": {"label": label, "visited_label": label, "style": style},
             "action": {
-                "type": 2,
-                "permission": {"type": 2},
+                # type 1 = 回调（发 INTERACTION_CREATE）；type 2 是"指令"，会把 data 当消息发出来
+                "type": 1,
+                "permission": {"type": 0},
                 "data": data,
                 "unsupport_tips": "请升级 QQ 后使用按钮，或直接回复「允许」/「拒绝」",
-                "enter": True,
             },
         }
 
