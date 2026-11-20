@@ -665,6 +665,11 @@ class DSHBot(Client):
         message_id = str(getattr(message, "id", "") or "")
         if not message_id:
             return
+        raw = clean_content(getattr(message, "content", ""))
+        # 防御：任何时候都不要把我们自己的提示词当成群聊发言记进上下文
+        if raw.lstrip().startswith(("【闲聊模式】", "【群聊插话判断】")):
+            log.warning("dropped prompt-shaped text from the pool (%s)", kind)
+            return
         self._pool_add(
             PooledMessage(
                 message_id=message_id,
@@ -2027,6 +2032,9 @@ class DSHBot(Client):
         if entry is None:
             entry = Chatter()
             self.chatter[conv_key] = entry
+        if text.lstrip().startswith(("【闲聊模式】", "【群聊插话判断】")):
+            log.warning("dropped prompt-shaped chatter line")
+            return
         entry.lines.append(f"[{time.strftime('%H:%M')}] {sender}: {text}")
         if len(entry.lines) > 12:
             entry.lines = entry.lines[-12:]
@@ -2097,15 +2105,19 @@ class DSHBot(Client):
         prev_speaker = speakers[-2] if len(speakers) > 1 else ""
         last_text = lines[-1].split(": ", 1)[-1] if lines else ""
         called = self.addresses_bot(last_text)
+        speakers = []
+        for item in lines:
+            name = str(item).split(":", 1)[0].strip()
+            if name and name not in speakers:
+                speakers.append(name)
+        recent = "、".join(speakers[:6]) or last_speaker
         if called:
             audience = f"最后一句来自 {last_speaker}，里面叫了你的名字（别名：{self._alias_list()}），是在跟你说话。"
-        elif prev_speaker and prev_speaker != last_speaker:
-            audience = (
-                f"最后一句来自 {last_speaker}，上一句来自 {prev_speaker} —— "
-                f"这是 {prev_speaker} 和 {last_speaker} 之间的对话。"
-            )
         else:
-            audience = f"最后一句来自 {last_speaker}。"
+            audience = (
+                f"最近 {len(lines)} 条里发言的人：{recent}。最后一句来自 {last_speaker}。"
+                "（谁在跟谁说话、是不是在问你，你自己按上下文判断，不要只看最后两条。）"
+            )
 
         prompt = chr(10).join(
             [

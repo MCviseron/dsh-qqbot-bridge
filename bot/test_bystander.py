@@ -27,7 +27,7 @@ async def main():
 
     two_people = await prompt_for(["群友B0001: 好无聊啊", "群友A0002: 那我们去玩游戏吧"])
     failures += check("两人对话 -> 标注旁观者",
-                      "之间的对话" in two_people and "群友A0002" in two_people, two_people[:60])
+                      "里发言的人" in two_people and "群友A0002" in two_people, two_people[:60])
     failures += check("两人对话时禁止抢话/替答", "不要替他们回答" in two_people and "别把他们的话当成对你的邀请" in two_people)
     failures += check("保留原格式与判断段", "像群里的一员那样判断" in two_people)
 
