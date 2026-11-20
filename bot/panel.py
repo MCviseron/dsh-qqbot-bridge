@@ -61,8 +61,18 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             return web.json_response({"ok": False, "error": "bad json"}, status=400)
         if not isinstance(patch, dict):
             return web.json_response({"ok": False, "error": "body must be an object"}, status=400)
+        known = set(runtime.snapshot().keys())
+        unknown = sorted(k for k in patch.keys() if k not in known)
+        if unknown:
+            # 新增设置项只在重启守护进程后才进 DEFAULTS；这里明确报出来，避免"保存了却没生效"。
+            log.warning("config keys ignored (not in this process's DEFAULTS): %s", ",".join(unknown))
         config = runtime.update(patch)
-        return web.json_response({"ok": True, "config": runtime.snapshot(), "saved": len(config)})
+        return web.json_response({
+            "ok": True,
+            "config": runtime.snapshot(),
+            "saved": len(config),
+            "unknown": unknown,
+        })
 
     async def manage(request: web.Request) -> web.Response:
         if not authorised(request):

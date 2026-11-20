@@ -168,7 +168,13 @@ window.__ModuleLoader__.load({
       const setValue = function (key, next) { const copy = Object.assign({}, draft); copy[key] = next; setDraft(copy) }
       const save = async function () {
         setBusy(true)
-        try { await call("/api/config", { method: "POST", body: JSON.stringify(draft) }); setDraft({}); setMessage("已保存"); await load() }
+        try {
+          const result = await call("/api/config", { method: "POST", body: JSON.stringify(draft) })
+          const unknown = Array.isArray(result.unknown) ? result.unknown : []
+          setDraft({})
+          setMessage(unknown.length === 0 ? "已保存" : "部分未生效（键不在运行进程里）：" + unknown.join(", ") + " —— 需要重启机器人进程")
+          await load()
+        }
         catch (error) { setMessage("保存失败") }
         setBusy(false)
       }
