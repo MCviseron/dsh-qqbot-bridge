@@ -2241,6 +2241,33 @@ class DSHBot(Client):
             else:
                 await self.send_text(conv_key, "创建分组失败：" + str(result.get("error")))
             return
+        if lowered in ("/指令", "/commands"):
+            try:
+                result = await self.bridge.commands(conv_key)
+            except BridgeError as error:
+                await self.send_text(conv_key, "查询指令失败：" + str(error))
+                return
+            if not result.get("ok"):
+                await self.send_text(conv_key, str(result.get("error") or "不可用"))
+                return
+            items = result.get("commands") or []
+            lines = ["DSH 指令（实时，" + str(len(items)) + " 条）："]
+            for item in items[:40]:
+                desc = str(item.get("description") or "")
+                lines.append("- /" + str(item.get("name")) + ((" — " + desc) if desc else ""))
+            if len(items) > 40:
+                lines.append("… 还有 " + str(len(items) - 40) + " 条")
+            lines.append("")
+            lines.append("直接用 /<名字> 就能执行（转给 DSH 官方命令通道）")
+            await self.send_text(conv_key, chr(10).join(lines))
+            return
+        if lowered.startswith("/") and lowered not in ("/pr", "/分组"):
+            try:
+                result = await self.bridge.run_command(conv_key, text.strip())
+            except Exception:  # noqa: BLE001 - unknown command must fall through, never crash
+                result = {}
+            if result.get("ok") and result.get("handled"):
+                return
         if lowered == "/pr" or lowered.startswith("/pr "):
             preset = text[3:].strip()
             try:
@@ -2414,6 +2441,33 @@ class DSHBot(Client):
             else:
                 await self.send_text(conv_key, "创建分组失败：" + str(result.get("error")))
             return
+        if lowered in ("/指令", "/commands"):
+            try:
+                result = await self.bridge.commands(conv_key)
+            except BridgeError as error:
+                await self.send_text(conv_key, "查询指令失败：" + str(error))
+                return
+            if not result.get("ok"):
+                await self.send_text(conv_key, str(result.get("error") or "不可用"))
+                return
+            items = result.get("commands") or []
+            lines = ["DSH 指令（实时，" + str(len(items)) + " 条）："]
+            for item in items[:40]:
+                desc = str(item.get("description") or "")
+                lines.append("- /" + str(item.get("name")) + ((" — " + desc) if desc else ""))
+            if len(items) > 40:
+                lines.append("… 还有 " + str(len(items) - 40) + " 条")
+            lines.append("")
+            lines.append("直接用 /<名字> 就能执行（转给 DSH 官方命令通道）")
+            await self.send_text(conv_key, chr(10).join(lines))
+            return
+        if lowered.startswith("/") and lowered not in ("/pr", "/分组"):
+            try:
+                result = await self.bridge.run_command(conv_key, text.strip())
+            except Exception:  # noqa: BLE001 - unknown command must fall through, never crash
+                result = {}
+            if result.get("ok") and result.get("handled"):
+                return
         if lowered == "/pr" or lowered.startswith("/pr "):
             preset = text[3:].strip()
             try:

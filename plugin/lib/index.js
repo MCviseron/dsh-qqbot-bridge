@@ -443,6 +443,50 @@ export function apply(ctx, rawConfig) {
       }
     },
 
+    commands: async (body) => {
+      await ready
+      const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
+      const ctxOf = (name) => { try { return typeof ctx.get === 'function' ? ctx.get(name) : undefined } catch (error) { return undefined } }
+      const agents = ctxOf('agents')
+      const runtime = ctxOf('commands')
+      if (agents === undefined || runtime === undefined) return { ok: false, error: 'agents/commands 服务不可用' }
+      const sessionId = store.sessionOf(convKey)
+      if (sessionId === undefined) return { ok: false, error: '这个会话还没有 DSH 会话' }
+      const agent = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
+      if (agent === undefined) return { ok: false, error: '会话未加载（先聊一句）' }
+      let list = []
+      try {
+        list = runtime.list(agent).map((item) => ({
+          name: item.name,
+          description: item.description || item.summary || '',
+          source: item.source || '',
+        }))
+      } catch (error) {
+        return { ok: false, error: 'list failed: ' + (error instanceof Error ? error.message : String(error)) }
+      }
+      return { ok: true, count: list.length, commands: list }
+    },
+
+    command: async (body) => {
+      await ready
+      const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
+      const line = typeof body?.line === 'string' ? body.line.trim() : ''
+      if (line === '') return { ok: false, error: 'line required' }
+      const ctxOf = (name) => { try { return typeof ctx.get === 'function' ? ctx.get(name) : undefined } catch (error) { return undefined } }
+      const agents = ctxOf('agents')
+      const runtime = ctxOf('commands')
+      if (agents === undefined || runtime === undefined) return { ok: false, error: 'agents/commands 服务不可用' }
+      const sessionId = store.sessionOf(convKey)
+      if (sessionId === undefined) return { ok: false, error: '这个会话还没有 DSH 会话' }
+      const agent = typeof agents.get === 'function' ? agents.get(sessionId) : undefined
+      if (agent === undefined) return { ok: false, error: '会话未加载（先聊一句）' }
+      try {
+        const result = await runtime.execute(agent, line, [], new AbortController().signal)
+        return { ok: true, handled: result !== undefined, line }
+      } catch (error) {
+        return { ok: false, error: 'execute failed: ' + (error instanceof Error ? error.message : String(error)) }
+      }
+    },
     permission: async (body) => {
       await ready
       const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''

@@ -7,7 +7,7 @@ import { createServer } from 'node:http'
 
 const MAX_BODY_BYTES = 1 << 20
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
-const ROUTES = new Set(['health', 'status', 'pull', 'inbound', 'approval', 'reset', 'switch', 'sessions', 'judge', 'permission', 'rebind'])
+const ROUTES = new Set(['health', 'status', 'pull', 'inbound', 'approval', 'reset', 'switch', 'sessions', 'judge', 'permission', 'rebind', 'commands', 'command'])
 
 /** Write one JSON response. */
 function respond(res, status, value) {

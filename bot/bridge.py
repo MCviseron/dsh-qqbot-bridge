@@ -115,6 +115,14 @@ class BridgeClient:
             payload={"convKey": conv_key, "transcript": transcript},
         )
 
+    async def commands(self, conv_key: str) -> Dict[str, Any]:
+        """List the DSH slash commands available to this conversation's session."""
+        return await self._request("POST", "/commands", payload={"convKey": conv_key})
+
+    async def run_command(self, conv_key: str, line: str) -> Dict[str, Any]:
+        """Execute one DSH slash command through the official command runtime."""
+        return await self._request("POST", "/command", payload={"convKey": conv_key, "line": line})
+
     async def rebind(self, conv_key: str) -> Dict[str, Any]:
         """Re-create the DSH session for one conversation (used by /分组)."""
         return await self._request("POST", "/rebind", payload={"convKey": conv_key})
