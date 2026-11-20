@@ -2577,8 +2577,15 @@ class DSHBot(Client):
         data = interaction.data or {}
         resolved = data.get("resolved") or {}
         button_data = resolved.get("button_data") or data.get("button_data") or ""
-        clicker = interaction.user_openid or interaction.group_member_openid or ""
-        if self.owner_openid and clicker and clicker != self.owner_openid:
+        clicker = (interaction.user_openid or interaction.group_member_openid or "").strip()
+        owner = (self.owner_openid or "").strip()
+        if owner and clicker and clicker.upper() != owner.upper():
+            # 点的人不是主人：QQ 会把这个 code 显示成「无权限操作」
+            log.warning(
+                "approval click rejected: clicker=%s owner=%s",
+                short_id(clicker),
+                short_id(owner),
+            )
             await self._interaction_result(interaction, 4)
             return
         decision, approval_id = parse_decision(str(button_data))
