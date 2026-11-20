@@ -210,7 +210,9 @@ export function apply(ctx, rawConfig) {
     // 回调返回 Promise<UserQuestionResult>；不是 QQ 会话就 return next()。
     return ctx.on('user-questions/request', (request, next) => {
       const agentId = String(request?.agent?.id ?? "")
-      const convKey = sessionToConv.get(agentId)
+      // store.convOf 是持久化的反查（sessionId → convKey），插件重启也不会丢
+      const convKey = sessionToConv.get(agentId) ?? store.convOf(agentId)
+      log(`question request: agent=${agentId} conv=${convKey ?? '-'}`)
       const questions = Array.isArray(request?.questions) ? request.questions : []
       const first = questions[0]
       const options = Array.isArray(first?.options) ? first.options : []
