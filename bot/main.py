@@ -292,6 +292,25 @@ def command_keyboard() -> Dict[str, Any]:
     return {"content": {"rows": rows}}
 
 
+def question_keyboard(question_id: str, options: list) -> Dict[str, Any]:
+    """One button per option; clicking answers the pending dsh question."""
+    buttons = []
+    for index, label in enumerate(options[:8]):
+        text = str(label)
+        buttons.append({
+            "id": f"{question_id}:{index}",
+            "render_data": {"label": text[:12], "visited_label": "✓ 已选择", "style": 1},
+            "action": {
+                "type": 1,
+                "permission": {"type": 2},
+                "data": f"选择 {question_id} {index}",
+                "unsupport_tips": "请升级 QQ 后使用按钮，或直接回复选项序号",
+            },
+        })
+    rows = [{"buttons": buttons[i:i + 2]} for i in range(0, len(buttons), 2)]
+    return {"content": {"rows": rows}}
+
+
 def decided_keyboard(approval_id: str, label: str) -> Dict[str, Any]:
     """Keyboard for an already-decided approval: one dead button that only toasts."""
     return {
@@ -2596,6 +2615,19 @@ class DSHBot(Client):
         if approval_id and approval_id in self._decided:
             log.info("approval %s already decided (%s); ignoring repeat click", short_id(approval_id), self._decided[approval_id])
             await self._interaction_result(interaction, 1)
+            return
+        # 提问按钮：选择 <question_id> <index>
+        picked = str(button_data).strip().split()
+        if len(picked) == 3 and picked[0] == "选择":
+            question_id, raw_index = picked[1], picked[2]
+            conv_for_answer = f"c2c:{clicker}" if clicker else self._owner_conv()
+            await self._interaction_result(interaction, 0)
+            try:
+                await self.bridge.answer_question(question_id, int(raw_index))
+                log.info("question %s answered with option %s", short_id(question_id), raw_index)
+            except Exception as error:  # noqa: BLE001 - the question may have expired
+                log.warning("answer delivery failed: %s", error)
+                await self.send_text(conv_for_answer, "这个提问已经失效了。")
             return
         conv_key = f"c2c:{clicker}" if clicker else self._owner_conv()
         # 先回执再干活：QQ 的交互回调有硬超时，超时后客户端会把按钮 data 当文本消息发出来

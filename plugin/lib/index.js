@@ -177,6 +177,55 @@ export function apply(ctx, rawConfig) {
       return { ok: false, reason: error instanceof Error ? error.message : String(error) }
     }
   }
+  // 提问通道：pending 表 + QQ 卡片投递（单题单选；多题/多选下一步）
+  const questionPending = new Map()
+  const askOnQq = async (convKey, id, question, options) => {
+    const port = Number(config.panelPort) || 39062
+    const response = await fetch(`http://127.0.0.1:${port}/api/question`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ convKey, id, question, options }),
+    })
+    if (!response.ok) throw new Error(`bot question endpoint HTTP ${response.status}`)
+  }
+
+  const installQuestionChannel = () => {
+    if (typeof ctx.on !== 'function') return () => {}
+    const sessionToConv = new Map()
+    const refreshMap = async () => {
+      try {
+        const listed = await bridge.listConversations?.()
+        if (Array.isArray(listed?.conversations)) {
+          for (const item of listed.conversations) {
+            const convKey = String(item.convKey ?? item.key ?? "")
+            const sessionId = store.sessionOf(convKey)
+            if (sessionId !== undefined) sessionToConv.set(String(sessionId), convKey)
+          }
+        }
+      } catch (error) { /* map stays as-is */ }
+    }
+    void refreshMap()
+    return ctx.on('user-questions/request', (request, next) => {
+      const agentId = String(request?.agent?.id ?? "")
+      const convKey = sessionToConv.get(agentId)
+      if (convKey === undefined) { next(); return }
+      const questions = Array.isArray(request?.questions) ? request.questions : []
+      const first = questions[0]
+      const options = Array.isArray(first?.options) ? first.options : []
+      if (first === undefined || options.length === 0) { next(); return }
+      const id = randomUUID()
+      const labels = options.map((item) => String(item.label ?? item))
+      questionPending.set(id, {
+        resolve: (answer) => {
+          const index = Number(answer?.index)
+          request.resolve({
+            answers: [{ questionIndex: 0, selected: Number.isInteger(index) && labels[index] !== undefined ? [labels[index]] : [] }],
+          })
+        },
+      })
+      void askOnQq(convKey, id, String(first.question ?? ""), labels).catch(() => { questionPending.delete(id); next() })
+    }, { prepend: true })
+  }
   const remember = (convKey, line) => {
     const list = contexts.get(convKey) ?? []
     const stamped = `[${stamp()}] ${stripHints(line)}`
@@ -443,6 +492,16 @@ export function apply(ctx, rawConfig) {
       }
     },
 
+    answer: async (body) => {
+      await ready
+      const id = typeof body?.id === 'string' ? body.id : ''
+      if (id === '') return { ok: false, error: 'id required' }
+      const pending = questionPending.get(id)
+      if (pending === undefined) return { ok: false, error: 'this question is no longer pending' }
+      questionPending.delete(id)
+      try { pending.resolve(body) } catch (error) { /* already settled */ }
+      return { ok: true }
+    },
     commands: async (body) => {
       await ready
       const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
@@ -668,6 +727,11 @@ export function apply(ctx, rawConfig) {
   }, 'dsh-qq-bridge: keep the bot process alive')
 
   // Serve the loopback port for as long as this plugin entry stays loaded.
+  ctx.effect(() => {
+    const dispose = installQuestionChannel()
+    return () => { try { dispose() } catch (error) { /* already gone */ } }
+  }, 'dsh-qq-bridge: question channel')
+
   ctx.effect(() => {
     void bridge.start()
       .then(() => log(`listening on http://${config.host}:${bridge.port} (cwd: ${config.cwd})`))

@@ -115,6 +115,10 @@ class BridgeClient:
             payload={"convKey": conv_key, "transcript": transcript},
         )
 
+    async def answer_question(self, question_id: str, index: int) -> Dict[str, Any]:
+        """Deliver a picked option back to the plugin's pending user-questions/request."""
+        return await self._request("POST", "/answer", payload={"id": question_id, "index": int(index)})
+
     async def commands(self, conv_key: str) -> Dict[str, Any]:
         """List the DSH slash commands available to this conversation's session."""
         return await self._request("POST", "/commands", payload={"convKey": conv_key})

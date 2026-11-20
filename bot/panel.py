@@ -6,6 +6,7 @@ itself is stopped (that is what makes the 启动/关闭 buttons possible).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import threading
@@ -87,6 +88,28 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         message = await control.perform(action)
         return web.json_response({"ok": True, "action": action, "message": message, "bot": control.status()})
 
+    async def question(request: web.Request) -> web.Response:
+        """Called by the plugin: render a dsh question as an inline keyboard."""
+        if not authorised(request):
+            return web.json_response({"ok": False, "error": "bad token"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "bad json"}, status=400)
+        conv_key = str((body or {}).get("convKey") or "")
+        question_id = str((body or {}).get("id") or "")
+        text = str((body or {}).get("question") or "")
+        options = [str(item) for item in ((body or {}).get("options") or [])]
+        if conv_key == "" or question_id == "" or not options:
+            return web.json_response({"ok": False, "error": "convKey/id/options required"}, status=400)
+        # 面板跑在守护进程里，QQ 客户端在子进程里：用文件队列交给子进程发卡片
+        outbox = Path("state") / "questions"
+        outbox.mkdir(parents=True, exist_ok=True)
+        (outbox / f"{question_id}.json").write_text(
+            json.dumps({"convKey": conv_key, "id": question_id, "question": text, "options": options}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return web.json_response({"ok": True})
     async def open_folder(request: web.Request) -> web.Response:
         """Open a workspace folder in Explorer (local convenience only)."""
         if not authorised(request):
@@ -135,6 +158,7 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
     app.router.add_post("/api/config", update_config)
     app.router.add_post("/api/manage", manage)
     app.router.add_post("/api/open-folder", open_folder)
+    app.router.add_post("/api/question", question)
     return app
 
 
