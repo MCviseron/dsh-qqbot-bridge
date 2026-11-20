@@ -107,7 +107,7 @@ window.__ModuleLoader__.load({
     ]
 
     const TEXTS = [
-      ["group_mode","群聊主动消息模式（A / B）"], ["group_allowlist","群白名单（openid，逗号分隔）"],
+      ["group_allowlist","群白名单（openid，逗号分隔）"],
       ["c2c_allowlist","私聊白名单（同上）"], ["bot_aliases","群内别名（逗号分隔）"],
 ["appid","APPID（留空=用 config.json）"],
       ["appsecret","APPSECRET（留空=不变，需重启）"],
@@ -228,7 +228,12 @@ window.__ModuleLoader__.load({
                 onChange: function (event) { setValue(item[0], Number(event.target.value)) },
               }))
           }),
-          h("div", { style: T.sectionTitle }, "过滤与凭据"),
+          h(ModeRow, {
+            key: "group-mode",
+            value: value("group_mode"),
+            disabled: busy,
+            onChange: function (next) { setValue("group_mode", next) },
+          }),          h("div", { style: T.sectionTitle }, "过滤与凭据"),
           TEXTS.map(function (item) {
             return h(Row, { key: item[0], title: item[1] },
               h("input", {
@@ -274,6 +279,37 @@ window.__ModuleLoader__.load({
           h("div", { style: Object.assign({}, T.actions, { marginTop: 8 }) },
             timeInput(0, "开始"), h("span", { style: T.hint }, "至"), timeInput(1, "结束"))),
         h(Switch, { checked: !!props.checked, label: "静默时段生效", disabled: props.disabled, onChange: props.onChange2 }))
+    }
+
+    // 群聊主动消息模式：下拉式二选一（方案 A / 方案 B）
+    function ModeRow(props) {
+      const current = String(props.value || "A").toUpperCase() === "B" ? "B" : "A"
+      const options = [
+        ["A", "方案 A", "群里先攒几条消息，再由主会话判断要不要说话；跟它已有的对话上下文连着，插话会更自然。"],
+        ["B", "方案 B", "用一个独立的判断会话先决定“说 / 不说”；决定要说时，把群聊记录原样交给主模型。判断与主对话隔离。"],
+      ]
+      const pill = function (key, label, hint) {
+        const active = current === key
+        return h("button", {
+          key: key,
+          type: "button",
+          disabled: props.disabled,
+          onClick: function () { props.onChange(key) },
+          style: {
+            padding: "6px 16px", borderRadius: 999, cursor: props.disabled ? "default" : "pointer", font: "inherit",
+            border: "1px solid " + (active ? "var(--dsw-alias-label-primary, #fff)" : "var(--dsw-alias-border-l2)"),
+            background: active ? "var(--dsw-alias-label-primary, #fff)" : "transparent",
+            color: active ? "var(--dsw-alias-bg-layer-3, #1b1d23)" : "var(--dsw-alias-label-secondary)",
+          },
+        }, label)
+      }
+      const pick = options.filter(function (item) { return item[0] === current })[0]
+      return h("div", { style: Object.assign({}, T.row, { alignItems: "flex-start" }) },
+        h("div", { style: T.labelBox },
+          h("span", { style: T.title }, "群聊主动消息模式"),
+          h("span", { style: T.hint }, pick[2])),
+        h("div", { style: Object.assign({}, T.actions, { flex: "0 0 auto" }) },
+          options.map(function (item) { return pill(item[0], item[1], item[2]) })))
     }
 
     function SidebarIcon() {
