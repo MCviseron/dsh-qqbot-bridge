@@ -46,7 +46,7 @@ DEFAULTS: Dict[str, Any] = {
     # 静默时段（晚间闲聊不回）：开关 + 时间段
     "quiet_enabled": True,
     # 审批决定后重发“已处理”卡片（关掉则只发一行文字确认）
-    "approval_card_after_decide": True,
+    "approval_card_after_decide": False,
     # 自动分组：每个 QQ 会话一个独立工作区
     "auto_group": True,
     "auto_group_root": "D:\\dsh-qqbot-temp",

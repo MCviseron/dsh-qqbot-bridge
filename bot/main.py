@@ -319,14 +319,16 @@ def decided_keyboard(approval_id: str, label: str) -> Dict[str, Any]:
 def approval_keyboard(approval_id: str) -> Dict[str, Any]:
     """Two-button keyboard: 允许 / 拒绝, clicked value carries the approval id."""
 
-    def button(label: str, style: int, data: str) -> Dict[str, Any]:
+    def button(label: str, style: int, data: str, visited: str) -> Dict[str, Any]:
         return {
             "id": data,
-            "render_data": {"label": label, "visited_label": label, "style": style},
+            # visited_label：点完之后客户端把按钮就地改成这个文案（官方同款做法）
+            "render_data": {"label": label, "visited_label": visited, "style": style},
             "action": {
-                # type 1 = 回调（发 INTERACTION_CREATE）；type 2 是"指令"，会把 data 当消息发出来
+                # 官方 dsh-qqbot 的审批键盘用的就是 action.type=1 + permission.type=2
+                # （permission.type: 0 会被平台直接判成"无权限操作"）
                 "type": 1,
-                "permission": {"type": 0},
+                "permission": {"type": 2},
                 "data": data,
                 "unsupport_tips": "请升级 QQ 后使用按钮，或直接回复「允许」/「拒绝」",
             },
@@ -337,8 +339,8 @@ def approval_keyboard(approval_id: str) -> Dict[str, Any]:
             "rows": [
                 {
                     "buttons": [
-                        button("允许", 1, f"允许 {approval_id}"),
-                        button("拒绝", 0, f"拒绝 {approval_id}"),
+                        button("允许", 1, f"允许 {approval_id}", "✓ 已允许"),
+                        button("拒绝", 0, f"拒绝 {approval_id}", "✓ 已拒绝"),
                     ]
                 }
             ]
