@@ -179,6 +179,7 @@ export function apply(ctx, rawConfig) {
   }
   // 提问通道：pending 表 + QQ 卡片投递（单题单选；多题/多选下一步）
   const questionPending = new Map()
+  const sessionToConv = new Map()
   const askOnQq = async (convKey, id, question, options) => {
     const port = Number(config.panelPort) || 39062
     const response = await fetch(`http://127.0.0.1:${port}/api/question`, {
@@ -205,31 +206,41 @@ export function apply(ctx, rawConfig) {
       } catch (error) { /* map stays as-is */ }
     }
     void refreshMap()
+    // 官方契约：waterfall answerer 要 { global: true, prepend: true }，
+    // 回调返回 Promise<UserQuestionResult>；不是 QQ 会话就 return next()。
     return ctx.on('user-questions/request', (request, next) => {
-      try {
       const agentId = String(request?.agent?.id ?? "")
       const convKey = sessionToConv.get(agentId)
-      if (convKey === undefined) { next(); return }
       const questions = Array.isArray(request?.questions) ? request.questions : []
       const first = questions[0]
       const options = Array.isArray(first?.options) ? first.options : []
-      if (first === undefined || options.length === 0) { next(); return }
+      if (convKey === undefined || first === undefined || options.length === 0) return next()
       const id = randomUUID()
       const labels = options.map((item) => String(item.label ?? item))
-      questionPending.set(id, {
-        resolve: (answer) => {
-          const index = Number(answer?.index)
-          request.resolve({
-            answers: [{ questionIndex: 0, selected: Number.isInteger(index) && labels[index] !== undefined ? [labels[index]] : [] }],
+      return new Promise((resolve, reject) => {
+        questionPending.set(id, {
+          resolve: (answer) => {
+            const index = Number(answer?.index)
+            const picked = labels[index]
+            questionPending.delete(id)
+            resolve({ answers: [{ questionIndex: 0, selected: picked === undefined ? [] : [picked] }] })
+          },
+        })
+        const signal = request?.signal
+        if (signal !== undefined && typeof signal.addEventListener === "function") {
+          signal.addEventListener("abort", () => {
+            questionPending.delete(id)
+            const error = new Error("ask_user_question was aborted before the user answered")
+            error.code = "ASK_ABORTED"
+            reject(error)
           })
-        },
+        }
+        void askOnQq(convKey, id, String(first.question ?? ""), labels).catch((error) => {
+          questionPending.delete(id)
+          reject(error instanceof Error ? error : new Error(String(error)))
+        })
       })
-      void askOnQq(convKey, id, String(first.question ?? ""), labels).catch(() => { questionPending.delete(id); next() })
-      } catch (error) {
-        // 任何意外都交还宿主（Web 应答），绝不把异常抛进瀑布事件
-        try { next() } catch (nested) { /* host already settled */ }
-      }
-    }, { prepend: true })
+    }, { global: true, prepend: true })
   }
   const remember = (convKey, line) => {
     const list = contexts.get(convKey) ?? []
@@ -430,6 +441,7 @@ export function apply(ctx, rawConfig) {
         log(`session created: ${convKey} → ${sessionId}`)
       }
       await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
+        sessionToConv.set(String(sessionId), convKey)
 
       // Casual chat is latency-bound: pin the session to the configured model /
       // reasoning effort once, without losing the Session's history.
@@ -491,6 +503,7 @@ export function apply(ctx, rawConfig) {
         const created = await sessionController.create({ cwd: dir })
         const sessionId = String(created.sessionId)
         await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
+        sessionToConv.set(String(sessionId), convKey)
         return { ok: true, sessionId, cwd: dir, moved: false, fallbackReason, previous: body?.previous || null }
       } catch (error) {
         return { ok: false, error: 'create failed: ' + (error instanceof Error ? error.message : String(error)) }
@@ -601,6 +614,7 @@ export function apply(ctx, rawConfig) {
           })
           sessionId = String(created.sessionId)
           await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
+        sessionToConv.set(String(sessionId), convKey)
         } catch (error) {
           return { ok: false, error: 'create session failed: ' + (error instanceof Error ? error.message : String(error)) }
         }
@@ -735,7 +749,7 @@ export function apply(ctx, rawConfig) {
   ctx.effect(() => {
     // 提问通道默认关闭：DSH 的 user-questions/request 是瀑布事件，
     // 处理不当会让宿主 abort 并崩溃（crash-…-host.log）。稳定性验证通过后再打开。
-    if (config.questionChannel !== true) return () => {}
+    if (config.questionChannel === false) return () => {}
     const dispose = installQuestionChannel()
     return () => { try { dispose() } catch (error) { /* already gone */ } }
   }, 'dsh-qq-bridge: question channel')
