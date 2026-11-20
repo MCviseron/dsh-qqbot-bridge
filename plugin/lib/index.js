@@ -497,9 +497,15 @@ export function apply(ctx, rawConfig) {
       // 该会话"当下生效"的权限值（会话投影），读不到就退回默认值
       const liveCurrent = () => {
         try {
-          const registry = typeof ctx.get === 'function' ? ctx.get('sessions') : undefined
           const sid = store.sessionOf(convKey)
-          const session = registry && sid !== undefined && typeof registry.get === 'function' ? registry.get(sid) : undefined
+          if (sid === undefined) return ''
+          const pick = (name) => { try { return typeof ctx.get === 'function' ? ctx.get(name) : undefined } catch (error) { return undefined } }
+          const sessions = pick('sessions')
+          let session = sessions && typeof sessions.get === 'function' ? sessions.get(sid) : undefined
+          if (session === undefined) {
+            const agents = pick('agents')
+            session = agents && typeof agents.get === 'function' ? agents.get(sid) : undefined
+          }
           if (session !== undefined && service && typeof service.current === 'function') return service.current(session)
         } catch (error) {
           return ''

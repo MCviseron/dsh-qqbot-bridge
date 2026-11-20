@@ -2330,7 +2330,10 @@ class DSHBot(Client):
             if not names:
                 await self.send_text(conv_key, str(result.get("note") or result.get("error") or "权限预设不可用"))
                 return
-            lines = ["当前权限预设（实时，来自 DSH）："]
+            current = str(result.get("current") or "")
+            lines = ["当前权限：" + (current or "未知（会话未加载）")]
+            lines.append("")
+            lines.append("可选预设（实时，来自 DSH）：")
             for name in names:
                 lines.append("- " + name + ("（默认）" if name == result.get("current") else ""))
             lines.append("")
@@ -2530,7 +2533,10 @@ class DSHBot(Client):
             if not names:
                 await self.send_text(conv_key, str(result.get("note") or result.get("error") or "权限预设不可用"))
                 return
-            lines = ["当前权限预设（实时，来自 DSH）："]
+            current = str(result.get("current") or "")
+            lines = ["当前权限：" + (current or "未知（会话未加载）")]
+            lines.append("")
+            lines.append("可选预设（实时，来自 DSH）：")
             for name in names:
                 lines.append("- " + name + ("（默认）" if name == result.get("current") else ""))
             lines.append("")
