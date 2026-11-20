@@ -450,11 +450,23 @@ export function apply(ctx, rawConfig) {
       let service = host.permissionPresets
       if (service === undefined && typeof ctx.get === 'function') service = ctx.get('permissionPresets')
       const names = service && Array.isArray(service.names) ? service.names.slice() : []
+      // 该会话"当下生效"的权限值（会话投影），读不到就退回默认值
+      const liveCurrent = () => {
+        try {
+          const registry = typeof ctx.get === 'function' ? ctx.get('sessions') : undefined
+          const sid = store.sessionOf(convKey)
+          const session = registry && sid !== undefined && typeof registry.get === 'function' ? registry.get(sid) : undefined
+          if (session !== undefined && service && typeof service.current === 'function') return service.current(session)
+        } catch (error) {
+          return ''
+        }
+        return ''
+      }
       if (preset === '') {
         return {
           ok: names.length > 0,
           names,
-          current: service && typeof service.defaultPreset === 'string' ? service.defaultPreset : '',
+          current: liveCurrent() || (service && typeof service.defaultPreset === 'string' ? service.defaultPreset : ''),
           note: names.length > 0 ? '' : 'permissionPresets 服务不可用（这条 DSH 没启用权限预设）',
         }
       }
@@ -462,8 +474,10 @@ export function apply(ctx, rawConfig) {
         return { ok: false, error: 'unknown preset: ' + preset, names }
       }
       const sessionController = host.sessionController
-      if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
       let sessionId = store.sessionOf(convKey)
+      if (sessionController === undefined && sessionId === undefined) {
+        return { ok: false, error: 'sessionController unavailable' }
+      }
       if (sessionId === undefined) {
         // 还没聊过：先给这个 QQ 会话建 DSH 会话（自动工作区开启时自带独立目录），
         // 否则 /pr 没法把命令投递进去。
@@ -477,18 +491,23 @@ export function apply(ctx, rawConfig) {
           return { ok: false, error: 'create session failed: ' + (error instanceof Error ? error.message : String(error)) }
         }
       }
-      try {
-        await sessionController.prompt({
-          requestId: randomUUID(),
-          sessionId,
-          mode: 'queue',
-          content: [{ type: 'text', text: '/permission ' + preset }],
-          clientTimeZone: 'Asia/Shanghai',
-        }, new AbortController().signal)
-      } catch (error) {
-        return { ok: false, error: 'prompt failed: ' + (error instanceof Error ? error.message : String(error)) }
+      // 官方写入口：permissionPresets.set(session, name)（/permission 命令内部走的就是它）。
+      // 之前用 sessionController.prompt 发文本，斜杠命令不会被解释，只会变成一条用户消息。
+      let sessions = undefined
+      try { sessions = typeof ctx.get === 'function' ? ctx.get('sessions') : undefined } catch (error) { sessions = undefined }
+      const session = sessions && typeof sessions.get === 'function' ? sessions.get(sessionId) : undefined
+      if (session === undefined) return { ok: false, error: '会话还没加载，先聊一句再试' }
+      if (service === undefined || typeof service.set !== 'function') {
+        return { ok: false, error: 'permissionPresets 服务不可用' }
       }
-      return { ok: true, switched: preset, names }
+      try {
+        service.set(session, preset)
+      } catch (error) {
+        return { ok: false, error: 'set failed: ' + (error instanceof Error ? error.message : String(error)) }
+      }
+      let landed = ''
+      try { landed = typeof service.current === 'function' ? service.current(session) : '' } catch (error) { landed = '' }
+      return { ok: true, switched: preset, current: landed, names }
     },
 
     judge: async (body) => {
