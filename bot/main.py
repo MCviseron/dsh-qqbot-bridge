@@ -2051,15 +2051,14 @@ class DSHBot(Client):
             self._decided.pop(next(iter(self._decided)), None)
         label = ("✅ 已允许" if decision == "allow" else "⛔ 已拒绝") + (f"（{tool_name}）" if tool_name else "")
         tail = "，继续执行。" if decision == "allow" else "，本轮操作不会执行。"
-        if self.rt_bool("approval_card_after_decide", True):
-            # QQ 没有消息编辑接口，只能"重发一张已处理卡片"（按钮已失效，再点只回 toast）
+        if not self.rt_bool("approval_inline_redraw", True):
+            # 旧行为：结论文字 + 重发的「已处理」卡片（按钮已失效，再点只回 toast）
             await self.send_text(
                 conv_key,
                 label + tail,
                 keyboard=decided_keyboard(chosen, label),
             )
-        else:
-            await self.send_text(conv_key, label + tail)
+        # 关闭时什么都不发：按钮已被 visited_label 就地重绘成「✓ 已允许 / ✓ 已拒绝」
 
     async def _buffer_chatter(self, conv_key: str, sender: str, text: str) -> None:
         """Collect group chatter; a judge run decides later whether to join in."""

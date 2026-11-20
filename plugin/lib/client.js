@@ -72,10 +72,10 @@ window.__ModuleLoader__.load({
       quote_enabled: ["识别引用消息", "引用时把被引用原文和来源一起带给模型"],
       capture_enabled: ["允许截屏", "/截图、/窗口 是否可用"],
       auto_group: ["自动分组（每个会话独立工作区）", "关闭则所有会话共用同一个工作目录"],
-      approval_card_after_decide: ["审批点完后重发“已处理”卡片", "关掉则只回一行文字（QQ 无法原地改按钮）"],
+      approval_inline_redraw: ["审批按钮就地重绘为“已允许”", "关闭后退回旧行为：额外发一条结论文字 + “已处理”卡片"],
     }
 
-    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_card_after_decide"]
+    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_inline_redraw"]
       .map(function (key) { return [key, LABELS[key][0], LABELS[key][1]] })
 
     // 静默时段：开始/结束时间 + 最右侧开关，并实时显示"当前是否静默、下次切换"
