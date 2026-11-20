@@ -299,10 +299,11 @@ def question_keyboard(question_id: str, options: list) -> Dict[str, Any]:
         text = str(label)
         buttons.append({
             "id": f"{question_id}:{index}",
-            "render_data": {"label": text[:12], "visited_label": "✓ 已选择", "style": 1},
+            "render_data": {"label": text[:12], "visited_label": "✓ 已选", "style": 1},
             "action": {
                 "type": 1,
                 "permission": {"type": 2},
+                "click_limit": 1,
                 "data": f"选择 {question_id} {index}",
                 "unsupport_tips": "请升级 QQ 后使用按钮，或直接回复选项序号",
             },
@@ -548,6 +549,7 @@ class DSHBot(Client):
             self._pull_task = asyncio.create_task(self._pull_loop())
         if getattr(self, "_watchdog_task", None) is None or self._watchdog_task.done():
             self._watchdog_task = asyncio.create_task(self._pull_watchdog())
+        self._question_task = asyncio.create_task(self._question_loop())
 
     async def _sync_panels(self) -> None:
         """Push bot/panels/panels.json to the QQ instruction panel."""
@@ -1787,6 +1789,32 @@ class DSHBot(Client):
             CURSOR_FILE.write_text(str(cursor), encoding="utf-8")
         except OSError:
             pass
+
+    async def _question_loop(self) -> None:
+        """Poll the file outbox the panel writes; render each dsh question as a keyboard."""
+        outbox = STATE_DIR / "questions"
+        while True:
+            try:
+                if outbox.is_dir():
+                    for path in sorted(outbox.glob("*.json")):
+                        try:
+                            payload = json.loads(path.read_text(encoding="utf-8"))
+                        except (OSError, ValueError):
+                            path.unlink(missing_ok=True)
+                            continue
+                        conv_key = str(payload.get("convKey") or "")
+                        question_id = str(payload.get("id") or "")
+                        text = str(payload.get("question") or "")
+                        options = [str(item) for item in (payload.get("options") or [])]
+                        if conv_key and question_id and options:
+                            body = "**需要你确认**" + chr(10) + chr(10) + text + chr(10) + chr(10)
+                            body += chr(10).join(f"{i + 1}. {label}" for i, label in enumerate(options))
+                            await self.send_text(conv_key, body, keyboard=question_keyboard(question_id, options))
+                            log.info("question %s delivered to %s", short_id(question_id), conv_key)
+                        path.unlink(missing_ok=True)
+            except Exception as error:  # noqa: BLE001 - never let the watcher die
+                log.warning("question loop error: %s", error)
+            await asyncio.sleep(1.0)
 
     async def _pull_loop(self) -> None:
         cursor = self._load_cursor()
