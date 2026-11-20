@@ -53,6 +53,7 @@ def make():
     bot._watchdog_task = None
     bot._urgent_tasks = set()
     bot.rt = None
+    bot._in_quiet_hours = lambda: False
     return bot
 
 

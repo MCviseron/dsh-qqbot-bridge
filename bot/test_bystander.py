@@ -19,6 +19,7 @@ async def prompt_for(lines):
     bot._register(T.CONV, "group", T.GROUP, "M1")
     bot.chatter[T.CONV] = Chatter(lines=list(lines), first_at=time.time(), last_judge_at=0.0)
     await bot._maybe_judge(T.CONV, force_timer=True)
+    bot._in_quiet_hours = lambda: False
     return bot.bridge.calls[-1]["text"] if bot.bridge.calls else ""
 
 

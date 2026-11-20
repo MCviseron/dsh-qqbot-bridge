@@ -82,6 +82,7 @@ def make_bot(owner_bound=True):
     bot._msg_seq = 0
     bot._acks = {}
     bot._pull_task = None
+    bot._in_quiet_hours = lambda: False
     return bot
 
 

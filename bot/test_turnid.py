@@ -36,6 +36,7 @@ def make():
     bot._suppress_reply = set()
     bot._streamed_turns = {}
     bot._urgent_tasks = set()
+    bot._in_quiet_hours = lambda: False
     return bot
 
 

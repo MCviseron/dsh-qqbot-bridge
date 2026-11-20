@@ -14,6 +14,8 @@ CONV = f"group:{GROUP}"
 
 class _RT:
     def get_bool(self, key, default=True):
+        if key == "group_at_only":
+            return False
         return default
 
     def get_int(self, key, default=0):
@@ -77,6 +79,7 @@ def make_bot():
     bot.state = type("S", (), {"owner_openid": "OWNER", "group_owners": {}, "save": lambda self: None})()
     bot.owner_openid = "OWNER"
     bot.rt = _RT()
+    bot._in_quiet_hours = lambda: False  # 静默时段按真实时间判断，会让夜间跑测试假失败
     for name in ("targets", "pending_approvals", "pending", "queued", "recent_images", "group_state", "chime",
                  "_seen_ids", "_submitted_at", "_inflight", "_inflight_at", "_rate", "_addressed_at",
                  "_bot_spoke_at", "_last_sent", "_last_bot_say", "_streams", "_acks", "_pending_quotes", "pool"):

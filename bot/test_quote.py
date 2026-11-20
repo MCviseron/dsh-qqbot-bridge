@@ -19,6 +19,8 @@ class _RT:
         self.probe = probe
 
     def get_bool(self, key, default=True):
+        if key == "group_at_only":
+            return False
         return self.probe if key == "quote_probe" else default
 
     def get_int(self, key, default=0):
@@ -108,6 +110,7 @@ def make_bot():
     bot._acks = {}
     bot._pull_task = None
     bot._watchdog_task = None
+    bot._in_quiet_hours = lambda: False
     return bot
 
 

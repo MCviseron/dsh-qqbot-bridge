@@ -2406,6 +2406,11 @@ class DSHBot(Client):
             mentioned = await self._mentions_bot(message)
             named = self.addresses_bot(text)
             commanded = text.startswith("/")
+            at_only = self.rt_bool("group_at_only", False)
+            if at_only is True and not mentioned:
+                # at-only：别名/关键词、以及斜杠命令都不算被叫到，只有真 @ 才放行
+                log.info("group chat ignored (at-only mode, named=%s cmd=%s)", named, commanded)
+                return
             if mentioned or named or commanded:
                 self._addressed_at[conv_key] = time.time()
                 stale = self.chatter.pop(conv_key, None)
@@ -2413,10 +2418,6 @@ class DSHBot(Client):
                     stale.timer.cancel()
                 log.info("treat as addressed (mention=%s name=%s cmd=%s)", mentioned, named, commanded)
                 await self._handle_group_at(message, chat=False)
-                return
-            if self.rt_bool("group_at_only", False):
-                # 本端收敛获取范围：只处理被 @ / 点名 / 命令的消息，其余群聊一律丢弃
-                log.info("group chat ignored (at-only mode)")
                 return
             if self.rt_str("group_mode", "A").strip().upper() == "B":
                 await self._plan_b(conv_key, message, member_openid)

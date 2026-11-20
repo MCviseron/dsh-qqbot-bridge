@@ -13,6 +13,8 @@ class _RT:
     """Runtime-config stub: streaming on, everything else default."""
 
     def get_bool(self, key, default=True):
+        if key == "group_at_only":
+            return False
         return True if key == "stream_enabled" else default
 
     def get_int(self, key, default=0):
@@ -96,6 +98,7 @@ def make_bot():
     bot._msg_seq = 0
     bot._acks = {}
     bot._pull_task = None
+    bot._in_quiet_hours = lambda: False
     return bot
 
 

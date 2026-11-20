@@ -17,6 +17,8 @@ class _RT:
         self.mode = mode
 
     def get_bool(self, key, default=True):
+        if key == "group_at_only":
+            return False
         return default
 
     def get_int(self, key, default=0):
@@ -97,6 +99,7 @@ def make_bot(mode, verdict):
     bot._watchdog_task = None
     bot.chatter = {}
     bot._msg_seq = 0
+    bot._in_quiet_hours = lambda: False
     return bot
 
 
