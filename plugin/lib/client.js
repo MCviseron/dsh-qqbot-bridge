@@ -212,14 +212,6 @@ window.__ModuleLoader__.load({
               h(Switch, { checked: !!value(item[0]), label: item[1], disabled: busy, onChange: function (next) { setValue(item[0], next) } }))
           }),
           h("div", { style: T.sectionTitle }, "群聊节奏与发送"),
-          NUMBERS.map(function (item) {
-            return h(Row, { key: item[0], title: item[1] },
-              h("input", {
-                type: "number", min: item[2], max: item[3], style: T.input,
-                value: value(item[0]) === undefined ? "" : value(item[0]),
-                onChange: function (event) { setValue(item[0], Number(event.target.value)) },
-              }))
-          }),
           h(QuietRow, {
             key: "quiet-hours",
             value: value("quiet_hours"),
@@ -227,6 +219,14 @@ window.__ModuleLoader__.load({
             disabled: busy,
             onChange: function (next) { setValue("quiet_hours", next) },
             onChange2: function (next) { setValue("quiet_enabled", next) },
+          }),
+          NUMBERS.map(function (item) {
+            return h(Row, { key: item[0], title: item[1] },
+              h("input", {
+                type: "number", min: item[2], max: item[3], style: T.input,
+                value: value(item[0]) === undefined ? "" : value(item[0]),
+                onChange: function (event) { setValue(item[0], Number(event.target.value)) },
+              }))
           }),
           h("div", { style: T.sectionTitle }, "过滤与凭据"),
           TEXTS.map(function (item) {
