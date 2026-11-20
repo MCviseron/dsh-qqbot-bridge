@@ -292,6 +292,30 @@ def command_keyboard() -> Dict[str, Any]:
     return {"content": {"rows": rows}}
 
 
+def decided_keyboard(approval_id: str, label: str) -> Dict[str, Any]:
+    """Keyboard for an already-decided approval: one dead button that only toasts."""
+    return {
+        "content": {
+            "rows": [
+                {
+                    "buttons": [
+                        {
+                            "id": "1",
+                            "render_data": {"label": label, "visited_label": label, "style": 3},
+                            "action": {
+                                "type": 1,
+                                "permission": {"type": 0},
+                                "data": f"已处理 {approval_id}"[:40],
+                                "unsupport_tips": "已处理",
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+
 def approval_keyboard(approval_id: str) -> Dict[str, Any]:
     """Two-button keyboard: 允许 / 拒绝, clicked value carries the approval id."""
 
@@ -2024,7 +2048,16 @@ class DSHBot(Client):
         while len(self._decided) > 100:
             self._decided.pop(next(iter(self._decided)), None)
         label = ("✅ 已允许" if decision == "allow" else "⛔ 已拒绝") + (f"（{tool_name}）" if tool_name else "")
-        await self.send_text(conv_key, label + ("，继续执行。" if decision == "allow" else "，本轮操作不会执行。"))
+        tail = "，继续执行。" if decision == "allow" else "，本轮操作不会执行。"
+        if self.rt_bool("approval_card_after_decide", True):
+            # QQ 没有消息编辑接口，只能"重发一张已处理卡片"（按钮已失效，再点只回 toast）
+            await self.send_text(
+                conv_key,
+                label + tail,
+                keyboard=decided_keyboard(chosen, label),
+            )
+        else:
+            await self.send_text(conv_key, label + tail)
 
     async def _buffer_chatter(self, conv_key: str, sender: str, text: str) -> None:
         """Collect group chatter; a judge run decides later whether to join in."""
