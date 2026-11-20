@@ -2233,8 +2233,11 @@ class DSHBot(Client):
             except BridgeError as error:
                 await self.send_text(conv_key, "创建分组失败：" + str(error))
                 return
-            if result.get("ok"):
-                await self.send_text(conv_key, "已切到独立工作区：" + str(result.get("cwd")) + chr(10) + "新会话：" + str(result.get("sessionId")))
+            if result.get("ok") and result.get("moved"):
+                await self.send_text(conv_key, "已迁移到工作区（上下文保留）：" + str(result.get("cwd")))
+            elif result.get("ok"):
+                reason = str(result.get("fallbackReason") or "")
+                await self.send_text(conv_key, "已切到独立工作区：" + str(result.get("cwd")) + chr(10) + "方式：新建会话（上下文不继承）" + (("，原因：" + reason) if reason else ""))
             else:
                 await self.send_text(conv_key, "创建分组失败：" + str(result.get("error")))
             return
@@ -2403,8 +2406,11 @@ class DSHBot(Client):
             except BridgeError as error:
                 await self.send_text(conv_key, "创建分组失败：" + str(error))
                 return
-            if result.get("ok"):
-                await self.send_text(conv_key, "已切到独立工作区：" + str(result.get("cwd")) + chr(10) + "新会话：" + str(result.get("sessionId")))
+            if result.get("ok") and result.get("moved"):
+                await self.send_text(conv_key, "已迁移到工作区（上下文保留）：" + str(result.get("cwd")))
+            elif result.get("ok"):
+                reason = str(result.get("fallbackReason") or "")
+                await self.send_text(conv_key, "已切到独立工作区：" + str(result.get("cwd")) + chr(10) + "方式：新建会话（上下文不继承）" + (("，原因：" + reason) if reason else ""))
             else:
                 await self.send_text(conv_key, "创建分组失败：" + str(result.get("error")))
             return

@@ -153,6 +153,30 @@ export function apply(ctx, rawConfig) {
     }
   }
 
+  // 会话搬家：优先调用 dsh-edit-file-workspace 的 /move 路由（保留上下文），
+  // 失败才退化成"新建会话"（丢上下文）。该路由要求请求来自回环，我们的桥就在本机。
+  const moveSessionTo = async (sessionId, targetPath) => {
+    let webServer
+    try {
+      webServer = typeof ctx.get === 'function' ? ctx.get('webServer') : undefined
+    } catch (error) {
+      webServer = undefined
+    }
+    const port = webServer && typeof webServer.port === 'number' ? webServer.port : 0
+    if (port === 0) return { ok: false, reason: 'webServer 不可用' }
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/dsh-edit-file-workspace/move`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, path: targetPath }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (response.ok) return { ok: true }
+      return { ok: false, reason: payload?.error || ('HTTP ' + response.status) }
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : String(error) }
+    }
+  }
   const remember = (convKey, line) => {
     const list = contexts.get(convKey) ?? []
     const stamped = `[${stamp()}] ${stripHints(line)}`
@@ -401,11 +425,19 @@ export function apply(ctx, rawConfig) {
       const sessionController = host.sessionController
       if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
       const dir = await workspaceFor(convKey, { autoGroup: body?.autoGroup, autoGroupRoot: body?.autoGroupRoot })
+      const existing = store.sessionOf(convKey)
+      let fallbackReason = ""
+      if (existing !== undefined) {
+        const moved = await moveSessionTo(existing, dir)
+        if (moved.ok) return { ok: true, sessionId: existing, cwd: dir, moved: true }
+        fallbackReason = String(moved.reason || 'move failed')
+        log(`session move failed (${convKey}): ${fallbackReason}; falling back to a new session`)
+      }
       try {
         const created = await sessionController.create({ cwd: dir })
         const sessionId = String(created.sessionId)
         await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
-        return { ok: true, sessionId, cwd: dir, previous: body?.previous || null }
+        return { ok: true, sessionId, cwd: dir, moved: false, fallbackReason, previous: body?.previous || null }
       } catch (error) {
         return { ok: false, error: 'create failed: ' + (error instanceof Error ? error.message : String(error)) }
       }
