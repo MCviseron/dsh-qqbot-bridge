@@ -394,6 +394,23 @@ export function apply(ctx, rawConfig) {
       remember(convKey, `${senderName || '群友'}: ${label}`)
       return { ok: true, sessionId, accepted: true }
     },
+    rebind: async (body) => {
+      await ready
+      const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''
+      if (convKey === '') return { ok: false, error: 'convKey required' }
+      const sessionController = host.sessionController
+      if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
+      const dir = await workspaceFor(convKey, { autoGroup: body?.autoGroup, autoGroupRoot: body?.autoGroupRoot })
+      try {
+        const created = await sessionController.create({ cwd: dir })
+        const sessionId = String(created.sessionId)
+        await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
+        return { ok: true, sessionId, cwd: dir, previous: body?.previous || null }
+      } catch (error) {
+        return { ok: false, error: 'create failed: ' + (error instanceof Error ? error.message : String(error)) }
+      }
+    },
+
     permission: async (body) => {
       await ready
       const convKey = typeof body?.convKey === 'string' ? body.convKey.trim() : ''

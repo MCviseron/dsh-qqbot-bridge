@@ -2144,6 +2144,11 @@ class DSHBot(Client):
 
     async def _plan_b(self, conv_key: str, message: Any, member_openid: str) -> None:
         """Plan B: an independent judge decides, then the main model gets the verbatim pool."""
+        # 只有"未被点名"的闲聊才会走到这里（被 @ 的走 _handle_group_at），
+        # 所以静默时段在这里拦，@ 与私聊不受影响。
+        if self._in_quiet_hours():
+            log.info("plan B skipped: quiet hours (%s)", self.rt_str("quiet_hours", ""))
+            return
         transcript = self._pool_transcript(conv_key)
         if transcript.strip() == "":
             transcript = f"群友{short_id(member_openid)}: {clean_content(getattr(message, 'content', ''))}"
@@ -2221,6 +2226,17 @@ class DSHBot(Client):
             return
         if lowered in HELP_COMMANDS:
             await self.send_text(conv_key, self.help_text())
+            return
+        if lowered in ("/分组", "/workspace", "/ws"):
+            try:
+                result = await self.bridge.rebind(conv_key)
+            except BridgeError as error:
+                await self.send_text(conv_key, "创建分组失败：" + str(error))
+                return
+            if result.get("ok"):
+                await self.send_text(conv_key, "已切到独立工作区：" + str(result.get("cwd")) + chr(10) + "新会话：" + str(result.get("sessionId")))
+            else:
+                await self.send_text(conv_key, "创建分组失败：" + str(result.get("error")))
             return
         if lowered == "/pr" or lowered.startswith("/pr "):
             preset = text[3:].strip()
@@ -2380,6 +2396,17 @@ class DSHBot(Client):
             return
         if lowered in HELP_COMMANDS:
             await self.send_text(conv_key, self.help_text())
+            return
+        if lowered in ("/分组", "/workspace", "/ws"):
+            try:
+                result = await self.bridge.rebind(conv_key)
+            except BridgeError as error:
+                await self.send_text(conv_key, "创建分组失败：" + str(error))
+                return
+            if result.get("ok"):
+                await self.send_text(conv_key, "已切到独立工作区：" + str(result.get("cwd")) + chr(10) + "新会话：" + str(result.get("sessionId")))
+            else:
+                await self.send_text(conv_key, "创建分组失败：" + str(result.get("error")))
             return
         if lowered == "/pr" or lowered.startswith("/pr "):
             preset = text[3:].strip()

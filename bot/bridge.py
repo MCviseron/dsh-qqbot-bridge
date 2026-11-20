@@ -115,6 +115,10 @@ class BridgeClient:
             payload={"convKey": conv_key, "transcript": transcript},
         )
 
+    async def rebind(self, conv_key: str) -> Dict[str, Any]:
+        """Re-create the DSH session for one conversation (used by /分组)."""
+        return await self._request("POST", "/rebind", payload={"convKey": conv_key})
+
     async def permission(self, conv_key: str, preset: Optional[str] = None) -> Dict[str, Any]:
         """Read or switch the DSH permission preset for one conversation."""
         return await self._request(
