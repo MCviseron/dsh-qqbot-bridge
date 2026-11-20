@@ -2414,6 +2414,10 @@ class DSHBot(Client):
                 log.info("treat as addressed (mention=%s name=%s cmd=%s)", mentioned, named, commanded)
                 await self._handle_group_at(message, chat=False)
                 return
+            if self.rt_bool("group_at_only", False):
+                # 本端收敛获取范围：只处理被 @ / 点名 / 命令的消息，其余群聊一律丢弃
+                log.info("group chat ignored (at-only mode)")
+                return
             if self.rt_str("group_mode", "A").strip().upper() == "B":
                 await self._plan_b(conv_key, message, member_openid)
                 return

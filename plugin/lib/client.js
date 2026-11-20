@@ -65,6 +65,7 @@ window.__ModuleLoader__.load({
       c2c_enabled: ["私聊响应", ""],
       group_enabled: ["群聊响应", ""],
       group_full_mode: ["群全量消息", "需在开放平台开启全量接收"],
+      group_at_only: ["群聊只处理 @ 我的消息", "开启后群里的普通发言一律丢弃（仅在拿到全量消息时才需要）"],
       md_auto: ["Markdown 自动发送", "回复像 Markdown 时用 msg_type=2"],
       stream_enabled: ["流式输出（仅私聊）", "平台只在单聊支持流式"],
       ack_enabled: ["“还在处理”占位提示", "会打断流式输出，默认关"],
@@ -74,7 +75,7 @@ window.__ModuleLoader__.load({
       approval_card_after_decide: ["审批点完后重发“已处理”卡片", "关掉则只回一行文字（QQ 无法原地改按钮）"],
     }
 
-    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_card_after_decide"]
+    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_card_after_decide"]
       .map(function (key) { return [key, LABELS[key][0], LABELS[key][1]] })
 
     // 静默时段：开始/结束时间 + 最右侧开关，并实时显示"当前是否静默、下次切换"

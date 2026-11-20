@@ -41,6 +41,8 @@ DEFAULTS: Dict[str, Any] = {
     "ack_enabled": False,
     # 群聊主动消息策略：A=主会话内判断（现状），B=独立判断 AI 先筛（测试）
     "group_mode": "A",
+    # 群聊获取范围：true = 本端只处理 @/点名/命令，其余群消息丢弃
+    "group_at_only": False,
     # 静默时段（晚间闲聊不回）：开关 + 时间段
     "quiet_enabled": True,
     # 审批决定后重发“已处理”卡片（关掉则只发一行文字确认）
