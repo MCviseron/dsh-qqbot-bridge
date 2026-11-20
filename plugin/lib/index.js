@@ -206,6 +206,7 @@ export function apply(ctx, rawConfig) {
     }
     void refreshMap()
     return ctx.on('user-questions/request', (request, next) => {
+      try {
       const agentId = String(request?.agent?.id ?? "")
       const convKey = sessionToConv.get(agentId)
       if (convKey === undefined) { next(); return }
@@ -224,6 +225,10 @@ export function apply(ctx, rawConfig) {
         },
       })
       void askOnQq(convKey, id, String(first.question ?? ""), labels).catch(() => { questionPending.delete(id); next() })
+      } catch (error) {
+        // 任何意外都交还宿主（Web 应答），绝不把异常抛进瀑布事件
+        try { next() } catch (nested) { /* host already settled */ }
+      }
     }, { prepend: true })
   }
   const remember = (convKey, line) => {
@@ -728,6 +733,9 @@ export function apply(ctx, rawConfig) {
 
   // Serve the loopback port for as long as this plugin entry stays loaded.
   ctx.effect(() => {
+    // 提问通道默认关闭：DSH 的 user-questions/request 是瀑布事件，
+    // 处理不当会让宿主 abort 并崩溃（crash-…-host.log）。稳定性验证通过后再打开。
+    if (config.questionChannel !== true) return () => {}
     const dispose = installQuestionChannel()
     return () => { try { dispose() } catch (error) { /* already gone */ } }
   }, 'dsh-qq-bridge: question channel')
