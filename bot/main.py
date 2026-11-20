@@ -301,7 +301,7 @@ def decided_keyboard(approval_id: str, label: str) -> Dict[str, Any]:
                     "buttons": [
                         {
                             "id": "1",
-                            "render_data": {"label": label, "visited_label": label, "style": 3},
+                            "render_data": {"label": "已处理 ✅", "visited_label": "已处理 ✅", "style": 0},
                             "action": {
                                 "type": 1,
                                 "permission": {"type": 0},
@@ -2585,8 +2585,10 @@ class DSHBot(Client):
             await self._interaction_result(interaction, 1)
             return
         conv_key = f"c2c:{clicker}" if clicker else self._owner_conv()
-        await self._resolve_approval(conv_key, decision, approval_id)
+        # 先回执再干活：QQ 的交互回调有硬超时，超时后客户端会把按钮 data 当文本消息发出来
+        # （表现就是群里多出一条「允许 <uuid>」）。
         await self._interaction_result(interaction, 0)
+        asyncio.create_task(self._resolve_approval(conv_key, decision, approval_id))
 
     async def _interaction_result(self, interaction: Interaction, code: int) -> None:
         try:
