@@ -2636,15 +2636,7 @@ class DSHBot(Client):
             )
             await self._interaction_result(interaction, 4)
             return
-        decision, approval_id = parse_decision(str(button_data))
-        if decision is None:
-            await self._interaction_result(interaction, 1)
-            return
-        if approval_id and approval_id in self._decided:
-            log.info("approval %s already decided (%s); ignoring repeat click", short_id(approval_id), self._decided[approval_id])
-            await self._interaction_result(interaction, 1)
-            return
-        # 提问按钮：选择 <question_id> <index>
+        # 提问按钮必须在审批解析之前拦掉：它的 data 不是「允许/拒绝 <id>」
         picked = str(button_data).strip().split()
         if len(picked) == 3 and picked[0] == "选择":
             question_id, raw_index = picked[1], picked[2]
@@ -2655,7 +2647,15 @@ class DSHBot(Client):
                 log.info("question %s answered with option %s", short_id(question_id), raw_index)
             except Exception as error:  # noqa: BLE001 - the question may have expired
                 log.warning("answer delivery failed: %s", error)
-                await self.send_text(conv_for_answer, "这个提问已经失效了。")
+                await self.send_text(conv_for_answer, "这个提问已经失效了（或插件还没重启加载 /answer）。")
+            return
+        decision, approval_id = parse_decision(str(button_data))
+        if decision is None:
+            await self._interaction_result(interaction, 1)
+            return
+        if approval_id and approval_id in self._decided:
+            log.info("approval %s already decided (%s); ignoring repeat click", short_id(approval_id), self._decided[approval_id])
+            await self._interaction_result(interaction, 1)
             return
         conv_key = f"c2c:{clicker}" if clicker else self._owner_conv()
         # 先回执再干活：QQ 的交互回调有硬超时，超时后客户端会把按钮 data 当文本消息发出来
