@@ -48,7 +48,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: pack check
         run: npm pack --dry-run
-      - name: publish
+      - name: upgrade npm (OIDC trusted publishing needs npm >= 11.5)
+        run: npm install -g npm@latest
+      - name: publish via OIDC trusted publisher
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
