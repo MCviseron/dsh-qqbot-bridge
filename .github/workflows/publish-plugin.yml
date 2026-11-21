@@ -46,6 +46,8 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: publish under the scoped name (local name must match the DSH profile key)
+        run: npm pkg set name=@mcviseron/dsh-qq-bridge
       - name: pack check
         run: npm pack --dry-run
       - name: upgrade npm (OIDC trusted publishing needs npm >= 11.5)
