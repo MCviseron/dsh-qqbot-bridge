@@ -1,0 +1,54 @@
+name: publish-plugin
+
+on:
+  push:
+    tags: ["plugin-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: syntax and plugin tests
+        working-directory: plugin
+        run: |
+          node --check lib/index.js
+          node --check lib/client.js
+          node --check lib/server.js
+          node --check lib/store.js
+          node --test test/smoke.mjs test/plugin.test.mjs
+      - name: tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/plugin-v')
+        working-directory: plugin
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e "const v=require('./package.json').version;const t=process.env.TAG.slice(9);if(v!==t){console.error('package.json',v,'!= tag',t);process.exit(1)}console.log('version ok',v)"
+
+  publish:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/plugin-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: pack check
+        run: npm pack --dry-run
+      - name: publish
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
