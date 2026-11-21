@@ -244,7 +244,14 @@ export function apply(ctx, rawConfig) {
       })
     }, { global: true, prepend: true })
   }
+  // 提示词形状的文本（机器人自己拼的判断/闲聊提示）不许进历史，否则会被当成群友发言回灌给模型
+  const looksLikePrompt = (value) => {
+    const text = String(value ?? '')
+    return text.includes('【闲聊模式】') || text.includes('【群聊插话判断】')
+  }
+
   const remember = (convKey, line) => {
+    if (looksLikePrompt(line)) return
     const list = contexts.get(convKey) ?? []
     const stamped = `[${stamp()}] ${stripHints(line)}`
     list.push(stamped)
@@ -429,7 +436,7 @@ export function apply(ctx, rawConfig) {
 
       // Background group chatter: keep it as context, never start a turn for it.
       if (body?.contextOnly === true) {
-        remember(convKey, `${senderName || '群友'}: ${label}`)
+        if (!looksLikePrompt(text)) remember(convKey, `${senderName || '群友'}: ${label}`)
         return { ok: true, buffered: true }
       }
 
@@ -483,7 +490,7 @@ export function apply(ctx, rawConfig) {
       } finally {
         clearTimeout(timer)
       }
-      remember(convKey, `${senderName || '群友'}: ${label}`)
+      if (!looksLikePrompt(text)) remember(convKey, `${senderName || '群友'}: ${label}`)
       return { ok: true, sessionId, accepted: true }
     },
     rebind: async (body) => {
