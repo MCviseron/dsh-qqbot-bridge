@@ -2188,7 +2188,11 @@ class DSHBot(Client):
         called = self.addresses_bot(last_text)
         speakers = []
         for item in lines:
-            name = str(item).split(":", 1)[0].strip()
+            # 行形如 "[14:11] 群友35DB11: 下午好啊"——先去时间戳，再取发言人
+            body = str(item)
+            if body.startswith("[") and "]" in body:
+                body = body.split("]", 1)[1].strip()
+            name = body.split(":", 1)[0].strip()
             if name and name not in speakers:
                 speakers.append(name)
         recent = "、".join(speakers[:6]) or last_speaker
@@ -2228,11 +2232,14 @@ class DSHBot(Client):
             if item.conv_key == conv_key and item.at >= cutoff
         ]
         items.sort(key=lambda item: item.at)
-        lines = [
-            f"[{time.strftime('%H:%M', time.localtime(item.at))}] "
-            f"{'你（机器人）' if item.outbound else item.author}: {item.text}"
-            for item in items[-limit:]
-        ]
+        lines = []
+        for item in items[-limit:]:
+            body = str(item.text)
+            # 双保险：无论污染从哪条路径进来，提示词形状的文本都不许出现在聊天记录里
+            if "【闲聊模式】" in body or "【群聊插话判断】" in body:
+                continue
+            who = "你（机器人）" if item.outbound else item.author
+            lines.append(f"[{time.strftime('%H:%M', time.localtime(item.at))}] {who}: {body}")
         return chr(10).join(lines)
 
     async def _plan_b(self, conv_key: str, message: Any, member_openid: str) -> None:
