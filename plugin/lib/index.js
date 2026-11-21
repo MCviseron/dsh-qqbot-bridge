@@ -1023,7 +1023,7 @@ export function apply(ctx, rawConfig) {
           properties: {
             convKey: { type: "string", description: "会话键，如 group:XXXX" },
             member: { type: "string", description: "被禁言的成员：短号或 @群友XXXX" },
-            minutes: { type: "number", description: "禁言分钟数，例如 720 表示 12 小时" },
+            minutes: { type: "number", description: "禁言分钟数（720=12 小时）；传 0 表示解除禁言" },
           },
         },
         async execute(args) {
@@ -1031,9 +1031,18 @@ export function apply(ctx, rawConfig) {
           const openid = resolveMember(convKey, args?.member)
           if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
           const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
-          const minutes = Math.max(1, Math.min(Number(args?.minutes ?? 10) || 10, 43200))
-          const result = await adminCall({ action: "mute", group, member: openid, seconds: Math.round(minutes * 60) })
-          return { ok: result.ok === true, member: args?.member, minutes, error: result.error }
+          // minutes <= 0 表示解除禁言（op=del）；注意不能用 `|| 10`，否则 0 会被吞成 10
+          const raw = Number(args?.minutes)
+          const minutes = Number.isFinite(raw) ? raw : 10
+          const seconds = minutes <= 0 ? 0 : Math.min(Math.round(minutes * 60), 60 * 60 * 24 * 30)
+          const result = await adminCall({ action: "mute", group, member: openid, seconds })
+          return {
+            ok: result.ok === true,
+            member: args?.member,
+            op: seconds > 0 ? "add" : "del",
+            minutes: seconds / 60,
+            error: result.error,
+          }
         },
       },
       {
