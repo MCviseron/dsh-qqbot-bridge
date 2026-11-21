@@ -1207,7 +1207,30 @@ class DSHBot(Client):
             return await self._run_capture(["-FullScreen"], out)
         if wanted in {"前台", "foreground"}:
             return await self._run_capture(["-Foreground"], out)
+        if wanted.isdigit():
+            # /截图 9 = /窗口 列表里的第 9 个（用完整标题，不用展示用的截断标题）
+            full = await self._window_title_by_index(int(wanted))
+            if full is None:
+                return False, f"没有第 {wanted} 个窗口（先发 /窗口 看列表）"
+            wanted = full
         return await self._run_capture(["-Title", wanted], out)
+
+    async def _window_title_by_index(self, index: int) -> Optional[str]:
+        """Full title of the index-th visible window (1-based), as listed by -List."""
+        ok, listing = await self._run_capture(["-List"])
+        if not ok:
+            return None
+        titles = []
+        for raw in listing.splitlines():
+            parts = raw.split("\t")
+            if len(parts) < 2:
+                continue
+            title = parts[1].strip()
+            if title:
+                titles.append(title)
+        if index < 1 or index > len(titles):
+            return None
+        return titles[index - 1]
 
     async def send_shot(self, conv_key: str, path: str, caption: str = "") -> bool:
         target = self.targets.get(conv_key) or self._target_from_key(conv_key)
