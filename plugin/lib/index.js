@@ -171,7 +171,7 @@ export function apply(ctx, rawConfig) {
         body: JSON.stringify({ sessionId, path: targetPath }),
       })
       const payload = await response.json().catch(() => ({}))
-      if (response.ok) return { ok: true }
+      if (response.ok) return { ok: true, sandbox: payload?.sandbox }
       return { ok: false, reason: payload?.error || ('HTTP ' + response.status) }
     } catch (error) {
       return { ok: false, reason: error instanceof Error ? error.message : String(error) }
@@ -497,7 +497,7 @@ export function apply(ctx, rawConfig) {
       let fallbackReason = ""
       if (existing !== undefined) {
         const moved = await moveSessionTo(existing, dir)
-        if (moved.ok) return { ok: true, sessionId: existing, cwd: dir, moved: true }
+        if (moved.ok) return { ok: true, sessionId: existing, cwd: dir, moved: true, sandbox: moved.sandbox }
         fallbackReason = String(moved.reason || 'move failed')
         log(`session move failed (${convKey}): ${fallbackReason}; falling back to a new session`)
       }
