@@ -15,7 +15,17 @@ window.__ModuleLoader__.load({
 
     const T = {
       page: { width: "100%", height: "100%", minHeight: 0, overflow: "auto", boxSizing: "border-box", padding: "24px clamp(16px,4vw,48px) 32px", color: "var(--dsw-alias-label-primary)", fontFamily: "var(--dsw-font-family, inherit)" },
-      inner: { width: "100%", maxWidth: 720, margin: "0 auto", display: "grid", gap: 14 },
+      inner: {
+        width: "100%", maxWidth: 720, margin: "0 auto", display: "grid", gap: 14,
+        // 磨砂玻璃底：页面浮在背景图之上时保证文字可读
+        padding: "20px 22px", borderRadius: 16,
+        border: "1px solid var(--dsw-alias-border-l2, rgba(255,255,255,0.14))",
+        backgroundColor: "rgba(22, 24, 30, 0.62)",
+        background: "color-mix(in srgb, var(--dsw-alias-bg-base, #14161c) 72%, transparent)",
+        backdropFilter: "blur(18px) saturate(130%)",
+        WebkitBackdropFilter: "blur(18px) saturate(130%)",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.24)",
+      },
       row: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, padding: "9px 0", borderTop: "1px solid var(--dsw-alias-border-l2)" },
       labelBox: { display: "grid", gap: 2, minWidth: 0 },
       title: { fontSize: 13, color: "var(--dsw-alias-label-primary)" },
@@ -39,7 +49,11 @@ window.__ModuleLoader__.load({
         style: {
           position: "relative", flex: "0 0 auto", width: 38, height: 22, padding: 2, border: 0,
           borderRadius: 999, cursor: props.disabled ? "default" : "pointer", boxSizing: "border-box",
-          background: props.checked ? "var(--dsw-alias-brand-primary, #4c8dff)" : "var(--dsw-alias-border-l3, #4a4f5c)",
+          // 用官方语义色：开启=业务主色，关闭=边框 L3（不再用不存在的 brand-primary 导致发白）
+          background: props.checked
+            ? "var(--dsw-alias-state-business-primary, #2f6bff)"
+            : "var(--dsw-alias-border-l3, #5a6270)",
+          boxShadow: props.checked ? "inset 0 0 0 1px rgba(255,255,255,0.12)" : "none",
           opacity: props.disabled ? 0.5 : 1,
         },
       }, h("span", {
