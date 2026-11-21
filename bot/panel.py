@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
+import uuid
 import subprocess
 import threading
 from pathlib import Path
@@ -110,6 +112,33 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             encoding="utf-8",
         )
         return web.json_response({"ok": True})
+    async def admin(request: web.Request) -> web.Response:
+        """Queue a group-admin action for the bot process and wait for its result."""
+        if not authorised(request):
+            return web.json_response({"ok": False, "error": "bad token"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "bad json"}, status=400)
+        action = str((body or {}).get("action") or "")
+        if action not in ("mute", "kick", "members"):
+            return web.json_response({"ok": False, "error": "action must be mute/kick/members"}, status=400)
+        request_id = str((body or {}).get("id") or uuid.uuid4())
+        outbox = Path("state") / "admin"
+        outbox.mkdir(parents=True, exist_ok=True)
+        target = outbox / f"{request_id}.json"
+        target.write_text(json.dumps({**body, "id": request_id, "status": "pending"}, ensure_ascii=False), encoding="utf-8")
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            await asyncio.sleep(0.4)
+            try:
+                done = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if done.get("status") == "done":
+                target.unlink(missing_ok=True)
+                return web.json_response({"ok": bool(done.get("ok")), "error": done.get("error"), "seconds": done.get("seconds"), "members": done.get("members")})
+        return web.json_response({"ok": False, "error": "机器人没响应（可能没在运行）"}, status=504)
     async def open_folder(request: web.Request) -> web.Response:
         """Open a workspace folder in Explorer (local convenience only)."""
         if not authorised(request):
@@ -159,6 +188,7 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
     app.router.add_post("/api/manage", manage)
     app.router.add_post("/api/open-folder", open_folder)
     app.router.add_post("/api/question", question)
+    app.router.add_post("/api/admin", admin)
     return app
 
 

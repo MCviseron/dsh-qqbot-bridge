@@ -550,6 +550,7 @@ class DSHBot(Client):
         if getattr(self, "_watchdog_task", None) is None or self._watchdog_task.done():
             self._watchdog_task = asyncio.create_task(self._pull_watchdog())
         self._question_task = asyncio.create_task(self._question_loop())
+        self._admin_task = asyncio.create_task(self._admin_loop())
 
     async def _sync_panels(self) -> None:
         """Push bot/panels/panels.json to the QQ instruction panel."""
@@ -1337,6 +1338,29 @@ class DSHBot(Client):
         self._pool_sent(target, result, chunk)
         return result
 
+    def _remember_member(self, conv_key: str, member_openid: str) -> None:
+        """Index speakers (tail6 → openid) and mirror it to disk for the panel/tools."""
+        if not member_openid:
+            return
+        index = self.member_index.setdefault(conv_key, {})
+        index[short_id(member_openid).upper()] = member_openid
+        try:
+            MEMBERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            MEMBERS_FILE.write_text(
+                json.dumps(
+                    {
+                        conv_key: {
+                            tail: {"openid": openid, "last_seen": time.strftime("%Y-%m-%d %H:%M:%S")}
+                            for tail, openid in self.member_index.get(conv_key, {}).items()
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+        except Exception as error:  # noqa: BLE001 - index is best-effort
+            log.warning("member index persist failed: %s", error)
+
     def _readable_at(self, text: str, target: Optional[Target] = None) -> str:
         """Per QQ docs: 群聊 @人用 <qqbot-at-user id="member_openid"/>，仅 markdown 消息支持。"""
         if not text:
@@ -1812,6 +1836,53 @@ class DSHBot(Client):
             CURSOR_FILE.write_text(str(cursor), encoding="utf-8")
         except OSError:
             pass
+
+    async def _admin_loop(self) -> None:
+        """Execute group-admin requests queued by the panel/tools (mute / kick / members)."""
+        outbox = STATE_DIR / "admin"
+        while True:
+            try:
+                if outbox.is_dir():
+                    for path in sorted(outbox.glob("*.json")):
+                        payload = {}
+                        try:
+                            payload = json.loads(path.read_text(encoding="utf-8"))
+                        except (OSError, ValueError):
+                            path.unlink(missing_ok=True)
+                            continue
+                        if payload.get("status") not in (None, "pending"):
+                            continue
+                        result = {"status": "done", "ok": False, "error": "unknown action"}
+                        try:
+                            action = str(payload.get("action") or "")
+                            group = str(payload.get("group") or "")
+                            member = str(payload.get("member") or "")
+                            if action == "mute" and group and member:
+                                seconds = int(payload.get("seconds") or 600)
+                                await self.api.set_group_restrict_chat_setting(
+                                    group_openid=group,
+                                    members=[{"member_openid": member, "mute_seconds": str(seconds)}],
+                                )
+                                result = {"status": "done", "ok": True, "seconds": seconds}
+                            elif action == "kick" and group and member:
+                                await self.api.batch_remove_group_members(
+                                    group_openid=group,
+                                    member_openids=[member],
+                                    add_to_member_blacklist=bool(payload.get("blacklist")),
+                                )
+                                result = {"status": "done", "ok": True}
+                            elif action == "members":
+                                result = {"status": "done", "ok": True, "members": payload.get("known") or {}}
+                        except Exception as error:  # noqa: BLE001 - report the platform message verbatim
+                            result = {"status": "done", "ok": False, "error": str(error)}
+                        try:
+                            path.write_text(json.dumps({**payload, **result}, ensure_ascii=False), encoding="utf-8")
+                        except OSError:
+                            pass
+                        log.info("admin %s -> %s", payload.get("action"), "ok" if result.get("ok") else result.get("error"))
+            except Exception as error:  # noqa: BLE001
+                log.warning("admin loop error: %s", error)
+            await asyncio.sleep(0.8)
 
     async def _question_loop(self) -> None:
         """Poll the file outbox the panel writes; render each dsh question as a keyboard."""
@@ -2477,7 +2548,7 @@ class DSHBot(Client):
             self._remember_id(message.id)
             self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
             if member_openid:
-                self.member_index.setdefault(conv_key, {})[short_id(member_openid).upper()] = member_openid
+                self._remember_member(conv_key, member_openid)
             log.info(
                 "group message from %s: %r (keys=%s, mentions=%d)",
                 short_id(member_openid),
@@ -2749,6 +2820,7 @@ class DSHBot(Client):
 # process control: run / supervise (auto-restart + panel) / stop
 # --------------------------------------------------------------------------- #
 STATE_DIR = ROOT / "state"
+MEMBERS_FILE = STATE_DIR / "members.json"
 STOP_FLAG = STATE_DIR / "stop.flag"
 SUPERVISOR_PID = STATE_DIR / "supervisor.pid"
 CHILD_PID = STATE_DIR / "child.pid"

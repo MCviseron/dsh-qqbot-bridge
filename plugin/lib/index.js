@@ -8,6 +8,7 @@
  * approval.
  */
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { HttpBridge } from './server.js'
@@ -960,6 +961,111 @@ export function apply(ctx, rawConfig) {
       log('qq_history tool registered')
     } catch (error) {
       log(`qq_history registration failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    // ── 群管理工具（禁言 / 踢人 / 成员索引） ──
+    const adminCall = async (payload) => {
+      const port = Number(config.panelPort) || 39062
+      const response = await fetch(`http://127.0.0.1:${port}/api/admin`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      return await response.json().catch(() => ({}))
+    }
+
+    const readMembers = () => {
+      try {
+        const file = join(String(config.botDir || "."), "state", "members.json")
+        const raw = readFileSync(file, "utf8")
+        return JSON.parse(raw)
+      } catch (error) {
+        return {}
+      }
+    }
+
+    const resolveMember = (convKey, member) => {
+      const known = readMembers()[convKey] || {}
+      const raw = String(member || "").trim().replace(/^@/, "").replace(/^群友/i, "").toUpperCase()
+      if (raw === "") return undefined
+      for (const [tail, info] of Object.entries(known)) {
+        if (tail.toUpperCase() === raw) return info?.openid ?? info
+      }
+      for (const [tail, info] of Object.entries(known)) {
+        if (raw.length >= 4 && tail.toUpperCase().includes(raw)) return info?.openid ?? info
+      }
+      if (/^[0-9A-F]{32}$/.test(raw)) return raw
+      return undefined
+    }
+
+    const adminTools = [
+      {
+        name: "qq_members",
+        description: "列出本群/本会话里发过言的成员（短号 → openid）。禁言/踢人前先查这个拿短号。",
+        parameters: { type: "object", additionalProperties: false, properties: { convKey: { type: "string", description: "会话键，如 group:XXXX" } } },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const all = readMembers()
+          const people = convKey !== "" ? { [convKey]: all[convKey] || {} } : all
+          const lines = []
+          for (const [key, members] of Object.entries(people)) {
+            for (const [tail, info] of Object.entries(members || {})) lines.push({ convKey: key, tail, openid: info?.openid ?? info })
+          }
+          return { ok: true, count: lines.length, members: lines }
+        },
+      },
+      {
+        name: "qq_mute",
+        description: "禁言群里某个成员（需要机器人是群管理员且有接口权限）。member 可以是短号（如 1B6CBB）或 @群友XXXX。",
+        parameters: {
+          type: "object", additionalProperties: false,
+          required: ["convKey", "member", "minutes"],
+          properties: {
+            convKey: { type: "string", description: "会话键，如 group:XXXX" },
+            member: { type: "string", description: "被禁言的成员：短号或 @群友XXXX" },
+            minutes: { type: "number", description: "禁言分钟数，例如 720 表示 12 小时" },
+          },
+        },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const openid = resolveMember(convKey, args?.member)
+          if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const minutes = Math.max(1, Math.min(Number(args?.minutes ?? 10) || 10, 43200))
+          const result = await adminCall({ action: "mute", group, member: openid, seconds: Math.round(minutes * 60) })
+          return { ok: result.ok === true, member: args?.member, minutes, error: result.error }
+        },
+      },
+      {
+        name: "qq_kick",
+        description: "把某个成员移出群（需要机器人是群管理员且有接口权限）。member 可以是短号或 @群友XXXX。",
+        parameters: {
+          type: "object", additionalProperties: false,
+          required: ["convKey", "member"],
+          properties: {
+            convKey: { type: "string", description: "会话键，如 group:XXXX" },
+            member: { type: "string", description: "被移出的成员：短号或 @群友XXXX" },
+            blacklist: { type: "boolean", description: "是否同时拉黑，默认否" },
+          },
+        },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const openid = resolveMember(convKey, args?.member)
+          if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const result = await adminCall({ action: "kick", group, member: openid, blacklist: args?.blacklist === true })
+          return { ok: result.ok === true, member: args?.member, error: result.error }
+        },
+      },
+    ]
+
+    for (const tool of adminTools) {
+      try {
+        tools.register({ ...tool, output: { schema: { type: "object" }, render: (_a, value) => [{ type: "text", text: JSON.stringify(value) }] } })
+        log(`${tool.name} tool registered`)
+      } catch (error) {
+        log(`${tool.name} registration failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
     }
   })
 
