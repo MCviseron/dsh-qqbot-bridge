@@ -121,7 +121,7 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         except Exception:
             return web.json_response({"ok": False, "error": "bad json"}, status=400)
         action = str((body or {}).get("action") or "")
-        if action not in ("mute", "kick", "members"):
+        if action not in ("mute", "kick", "members", "mute_state"):
             return web.json_response({"ok": False, "error": "action must be mute/kick/members"}, status=400)
         request_id = str((body or {}).get("id") or uuid.uuid4())
         outbox = Path("state") / "admin"
@@ -137,7 +137,14 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
                 continue
             if done.get("status") == "done":
                 target.unlink(missing_ok=True)
-                return web.json_response({"ok": bool(done.get("ok")), "error": done.get("error"), "seconds": done.get("seconds"), "members": done.get("members")})
+                return web.json_response({
+                    "ok": bool(done.get("ok")),
+                    "error": done.get("error"),
+                    "seconds": done.get("seconds"),
+                    "members": done.get("members"),
+                    "state": done.get("state"),
+                    "op": done.get("op"),
+                })
         return web.json_response({"ok": False, "error": "机器人没响应（可能没在运行）"}, status=504)
     async def open_folder(request: web.Request) -> web.Response:
         """Open a workspace folder in Explorer (local convenience only)."""

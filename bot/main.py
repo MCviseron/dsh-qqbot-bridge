@@ -1873,6 +1873,9 @@ class DSHBot(Client):
                                     add_to_member_blacklist=bool(payload.get("blacklist")),
                                 )
                                 result = {"status": "done", "ok": True}
+                            elif action == "mute_state" and group:
+                                state = await self.api.get_group_restrict_chat_setting(group_openid=group)
+                                result = {"status": "done", "ok": True, "state": state}
                             elif action == "members":
                                 result = {"status": "done", "ok": True, "members": payload.get("known") or {}}
                         except Exception as error:  # noqa: BLE001 - report the platform message verbatim

@@ -1046,6 +1046,41 @@ export function apply(ctx, rawConfig) {
         },
       },
       {
+        name: "qq_unmute",
+        description: "解除某个成员的禁言（等价 op=del）。语义独立，避免把 0 分钟误当禁言时长。",
+        parameters: {
+          type: "object", additionalProperties: false,
+          required: ["convKey", "member"],
+          properties: {
+            convKey: { type: "string", description: "会话键，如 group:XXXX" },
+            member: { type: "string", description: "成员：短号或 @群友XXXX" },
+          },
+        },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const openid = resolveMember(convKey, args?.member)
+          if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const result = await adminCall({ action: "mute", group, member: openid, seconds: 0 })
+          return { ok: result.ok === true, member: args?.member, op: "del", error: result.error }
+        },
+      },
+      {
+        name: "qq_mute_state",
+        description: "查询本群当前的禁言设置（平台原样返回），用于确认禁言/解禁是否真的生效。",
+        parameters: {
+          type: "object", additionalProperties: false,
+          required: ["convKey"],
+          properties: { convKey: { type: "string", description: "会话键，如 group:XXXX" } },
+        },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const result = await adminCall({ action: "mute_state", group })
+          return { ok: result.ok === true, state: result.state, error: result.error }
+        },
+      },
+      {
         name: "qq_kick",
         description: "把某个成员移出群（需要机器人是群管理员且有接口权限）。member 可以是短号或 @群友XXXX。",
         parameters: {
