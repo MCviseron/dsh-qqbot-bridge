@@ -1859,11 +1859,13 @@ class DSHBot(Client):
                             member = str(payload.get("member") or "")
                             if action == "mute" and group and member:
                                 seconds = int(payload.get("seconds") or 600)
-                                await self.api.set_group_restrict_chat_setting(
-                                    group_openid=group,
-                                    members=[{"member_openid": member, "mute_seconds": str(seconds)}],
-                                )
-                                result = {"status": "done", "ok": True, "seconds": seconds}
+                                # 官方字段：op=add/del + mute_expire_at（RFC3339，带时区）
+                                entry: Dict[str, Any] = {"op": "add" if seconds > 0 else "del", "member_openid": member}
+                                if seconds > 0:
+                                    expire = time.time() + seconds
+                                    entry["mute_expire_at"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(expire)) + "+08:00"
+                                await self.api.set_group_restrict_chat_setting(group_openid=group, members=[entry])
+                                result = {"status": "done", "ok": True, "seconds": seconds, "op": entry["op"]}
                             elif action == "kick" and group and member:
                                 await self.api.batch_remove_group_members(
                                     group_openid=group,
