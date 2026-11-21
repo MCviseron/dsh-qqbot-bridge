@@ -138,6 +138,12 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false)
       const [logs, setLogs] = React.useState([])
       const [paused, setPaused] = React.useState(false)
+      const [follow, setFollow] = React.useState(true)
+      const logRef = React.useRef(null)
+      React.useEffect(function () {
+        const node = logRef.current
+        if (node && follow) node.scrollTop = node.scrollHeight
+      }, [logs, follow])
 
       const call = React.useCallback(async function (path, options) {
         const response = await fetch(PANEL + path, Object.assign({ headers: { "content-type": "application/json" } }, options || {}))
@@ -271,8 +277,20 @@ window.__ModuleLoader__.load({
           h("div", { style: T.sectionTitle }, "运行日志（最近 200 行）"),
           h("div", { style: T.actions },
             h("button", { style: T.btn, onClick: function () { setPaused(!paused) } }, paused ? "继续刷新" : "暂停刷新"),
+            h("button", {
+              style: Object.assign({}, T.btn, follow ? { borderColor: "var(--dsw-alias-state-business-primary, #2f6bff)", color: "var(--dsw-alias-state-business-primary, #2f6bff)" } : {}),
+              onClick: function () { setFollow(!follow) },
+            }, follow ? "跟随中" : "已暂停跟随"),
             h("button", { style: T.btn, onClick: function () { setLogs([]) } }, "清屏")),
-          h("pre", { style: T.log }, logs.join("\n") || "(暂无日志)")
+          h("pre", {
+            style: T.log,
+            ref: logRef,
+            onScroll: function (event) {
+              const node = event.target
+              // 手动往上翻就暂停跟随；回到底部自动恢复
+              setFollow(node.scrollHeight - node.scrollTop - node.clientHeight < 24)
+            },
+          }, logs.join("\n") || "(暂无日志)")
         ))
     }
 
