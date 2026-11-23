@@ -1460,6 +1460,36 @@ class DSHBot(Client):
                         return str(candidate)
         return None
 
+    async def _finish_stream(self, conv_key: str) -> None:
+        """Close an open streaming message so media never truncates it mid-frame."""
+        state = self._streams.pop(conv_key, None)
+        if state is None or int(state.get("index", 0)) == 0:
+            return
+        target = self.targets.get(conv_key) or self._target_from_key(conv_key)
+        if target is None or not state.get("stream_msg_id"):
+            return
+        payload = {
+            "input_mode": "replace",
+            "input_state": 10,
+            "content_type": "markdown",
+            "content_raw": STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip(),
+            "event_id": state.get("event_id") or target.last_msg_id or "",
+            "msg_seq": state.get("msg_seq", 1),
+            "index": int(state.get("index", 0)),
+            "stream_msg_id": state["stream_msg_id"],
+        }
+        http = getattr(self.api, "_http", None)
+        previous = getattr(http, "base_url", None)
+        try:
+            if previous:
+                http.base_url = SG_GROUP_BASE_URL
+            await self.api.post_c2c_stream_message(openid=target.openid, **payload)
+        except Exception as error:  # noqa: BLE001 - never block media on a stream hiccup
+            log.warning("stream finish failed (%s): %s", type(error).__name__, error)
+        finally:
+            if previous:
+                http.base_url = previous
+
     async def _send_file(self, target: Target, path: str) -> bool:
         """Upload one local file into the conversation as a QQ media message."""
         file_type = FILE_TYPES.get(Path(path).suffix.lower(), 4)
@@ -1478,6 +1508,26 @@ class DSHBot(Client):
             return False
         log.info("sent file %s (type=%s) to %s", Path(path).name, file_type, target.conv_key)
         return True
+
+    def _spawn_files(self, conv_key: str, text: str) -> None:
+        """Send media off the pull loop.
+
+        The pull loop is the single reader of the bridge feed: a slow platform
+        upload inside it froze every later event (DSH looked finished while QQ
+        showed nothing). Uploads therefore run as background tasks.
+        """
+        if not (SEND_FILE_MARK.search(text) or STICKER_MARK.search(text)):
+            return
+
+        async def runner() -> None:
+            try:
+                await self._dispatch_files(conv_key, text)
+            except Exception as error:  # noqa: BLE001 - never kill the loop
+                log.exception("file dispatch failed: %s", error)
+
+        task = asyncio.create_task(runner())
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     async def _dispatch_files(self, conv_key: str, text: str) -> str:
         """Send [[send_file: path]] / [[sticker: name]] payloads, return the rest."""
@@ -2042,7 +2092,8 @@ class DSHBot(Client):
                 log.warning("model tried to stay silent on a directed message in %s; answering instead", conv_key)
                 text = text.replace(NO_REPLY_MARK, "").strip() or "在的，你说。"
             self._chat_turns.pop(conv_key, None)
-            text = await self._dispatch_files(conv_key, text)
+            self._spawn_files(conv_key, text)
+            text = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", text)).strip()
             if not text:
                 used = f"（调用了 {len(tools)} 个工具：{'、'.join(tools[:8])}）" if tools else ""
                 text = f"（本轮结束 {reason or 'done'}，没有文字输出）{used}"
@@ -2118,7 +2169,10 @@ class DSHBot(Client):
         # the durable reply path only; streaming would show them as literal text.
         if SEND_FILE_MARK.search(str(state["text"])) or STICKER_MARK.search(str(state["text"])):
             # Close the bubble first: aborting a stream mid-frame left a truncated message.
-            await self._finish_stream(conv_key)
+            try:
+                await self._finish_stream(conv_key)
+            except Exception as error:  # noqa: BLE001 - the turn must still reach the durable path
+                log.warning("stream close before media failed: %s", error)
             return
 
         async def send_frame(done: bool) -> bool:
@@ -2173,7 +2227,7 @@ class DSHBot(Client):
             ok = await send_frame(True)
             state = self._streams.pop(conv_key, None) or state
             if ok:
-                await self._dispatch_files(conv_key, str(state.get("text") or ""))
+                self._spawn_files(conv_key, str(state.get("text") or ""))
                 if state.get("turn_id"):
                     self._streamed_turns[str(state["turn_id"])] = time.time()
                     if len(self._streamed_turns) > 50:
