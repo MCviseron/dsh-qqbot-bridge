@@ -1478,6 +1478,7 @@ class DSHBot(Client):
 
     async def _dispatch_files(self, conv_key: str, text: str) -> str:
         """Send [[send_file: path]] / [[sticker: name]] payloads, return the rest."""
+        problems: List[str] = []
         stickers = [match.strip() for match in STICKER_MARK.findall(text)]
         if stickers:
             target = self.targets.get(conv_key) or self._target_from_key(conv_key)
@@ -1485,6 +1486,7 @@ class DSHBot(Client):
                 resolved = self.resolve_sticker(name)
                 if resolved is None:
                     log.warning("unknown sticker %r (have %s)", name, ",".join(self.sticker_names()[:8]))
+                    problems.append(f"表情包「{name}」不存在")
                     continue
                 if target is not None:
                     await self._send_file(target, resolved)
@@ -1500,9 +1502,18 @@ class DSHBot(Client):
         for path in paths:
             allowed = self._allowed_file(path)
             if allowed is None:
+                # 不再静默：路径不存在或不在允许目录，都要让对话里的人知道
                 log.warning("refusing to send %s (outside SEND_FILE_ROOTS)", path)
+                exists = Path(path).expanduser().exists()
+                problems.append(
+                    f"{Path(path).name}：{'路径不允许发送' if exists else '文件不存在'}"
+                )
                 continue
-            await self._send_file(target, allowed)
+            sent = await self._send_file(target, allowed)
+            if not sent:
+                problems.append(f"{Path(allowed).name}：平台拒绝发送")
+        if problems:
+            await self.send_text(conv_key, "⚠ 有文件没发出去：" + "；".join(problems[:4]))
         return SEND_FILE_MARK.sub("", text).strip()
 
     # -- ack watchdog ------------------------------------------------------- #
