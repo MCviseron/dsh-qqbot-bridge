@@ -1522,15 +1522,18 @@ class DSHBot(Client):
             task.cancel()
 
     # -- DSH ---------------------------------------------------------------- #
-    def _release_if_stuck(self, conv_key: str) -> None:
-        """A turn that never returns must not silence the conversation forever."""
-        if not self.rt_bool("ack_enabled", False):
-            return
+    def _release_if_stuck(self, conv_key: str, *, force: bool = False) -> None:
+        """A turn that never returns must not silence the conversation forever.
+
+        Note: this must NOT depend on ack_enabled — the "还在处理" placeholder is
+        optional, but the dead-man release is the only thing that unblocks a
+        conversation whose turn/end event was lost (e.g. the bridge dropped).
+        """
         if self._inflight.get(conv_key, 0) <= 0:
             return
         started = self._inflight_at.get(conv_key, 0.0)
-        waited = time.time() - started
-        if waited < self.rt_float("stuck_turn_s", self.config.stuck_turn_s):
+        waited = time.time() - started if started > 0 else 0.0
+        if not force and waited < self.rt_float("stuck_turn_s", self.config.stuck_turn_s):
             return
         log.warning("turn in %s stuck for %.0fs; releasing the queue", conv_key, waited)
         self._inflight[conv_key] = 0
@@ -1947,12 +1950,19 @@ class DSHBot(Client):
                         self._urgent_tasks.add(task)
                         task.add_done_callback(self._urgent_tasks.discard)
                         continue
+                    self._pull_failures = 0
                     await self._handle_event(event)
             except asyncio.CancelledError:
                 log.warning("pull loop cancelled; watchdog will restart it")
                 return
             except BridgeError as error:
-                log.warning("bridge pull failed: %s", error)
+                self._pull_failures = getattr(self, "_pull_failures", 0) + 1
+                log.warning("bridge pull failed (%d in a row): %s", self._pull_failures, error)
+                if self._pull_failures >= 3:
+                    # 桥接掉线期间丢掉的 turn/end 会让会话永远"忙"，这里强制解锁
+                    for key in list(self._inflight):
+                        self._release_if_stuck(key, force=True)
+                    self._pull_failures = 0
                 await asyncio.sleep(3)
             except Exception as error:  # noqa: BLE001 - keep the feed alive
                 log.exception("pull loop error: %s", error)
