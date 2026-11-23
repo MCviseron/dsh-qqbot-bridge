@@ -1493,9 +1493,6 @@ class DSHBot(Client):
 
     async def _send_file(self, target: Target, path: str) -> bool:
         """Upload one local file into the conversation as a QQ media message."""
-        # 先把同会话的流式消息收尾：在流仍然打开时插入媒体，客户端会把它显示成
-        # "该消息类型暂不支持查看"。这条调用原本就在这里，被一次重构误删了。
-        await self._finish_stream(target.conv_key)
         file_type = FILE_TYPES.get(Path(path).suffix.lower(), 4)
         try:
             if target.kind == "group":
@@ -2176,13 +2173,9 @@ class DSHBot(Client):
 
         # Inline directives ([[send_file: ...]], [[sticker: ...]]) are executed by
         # the durable reply path only; streaming would show them as literal text.
-        if SEND_FILE_MARK.search(str(state["text"])) or STICKER_MARK.search(str(state["text"])):
-            # Close the bubble first: aborting a stream mid-frame left a truncated message.
-            try:
-                await self._finish_stream(conv_key)
-            except Exception as error:  # noqa: BLE001 - the turn must still reach the durable path
-                log.warning("stream close before media failed: %s", error)
-            return
+        # 不要再因为出现 [[send_file]] 就中断流式：中断会把已发出的半句留在客户端
+        # （表现为「抱歉」「如果」这种碎片 + 后面又一条完整消息），
+        # 正确做法是把标记从帧内容里剥掉，流照常走完，收尾后再发文件。
 
         async def send_frame(done: bool) -> bool:
             if state["sent_text"] == state["text"]:
@@ -2195,7 +2188,8 @@ class DSHBot(Client):
                 "input_mode": "replace",
                 "input_state": 10 if done else 1,
                 "content_type": "markdown",
-                "content_raw": state["text"],
+                # 标记不进入正文：QQ 侧不应该看到 [[send_file: …]]
+                "content_raw": STICKER_MARK.sub("", SEND_FILE_MARK.sub("", state["text"])),
                 "event_id": state["event_id"],
                 "msg_seq": state["msg_seq"],
                 "index": int(state["index"]),
