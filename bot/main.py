@@ -1422,6 +1422,9 @@ class DSHBot(Client):
             resolved = Path(path).expanduser().resolve(strict=True)
         except (OSError, RuntimeError):
             return None
+        if not resolved.is_file():
+            # 目录被当成文件上传时会抛 Errno 13（Permission denied），这里提前挡住
+            return None
         roots = list(self.config.send_file_roots)
         # 自动分区工作区默认在别的盘（如 D:\dsh-qqbot-temp），必须一并放行，
         # 否则模型写在那里的图/文件会被"outside SEND_FILE_ROOTS"挡掉。
@@ -1504,10 +1507,14 @@ class DSHBot(Client):
             if allowed is None:
                 # 不再静默：路径不存在或不在允许目录，都要让对话里的人知道
                 log.warning("refusing to send %s (outside SEND_FILE_ROOTS)", path)
-                exists = Path(path).expanduser().exists()
-                problems.append(
-                    f"{Path(path).name}：{'路径不允许发送' if exists else '文件不存在'}"
-                )
+                candidate = Path(path).expanduser()
+                if not candidate.exists():
+                    reason = "文件不存在"
+                elif candidate.is_dir():
+                    reason = "这是个目录，不是文件"
+                else:
+                    reason = "路径不在允许目录内"
+                problems.append(f"{candidate.name}：{reason}")
                 continue
             sent = await self._send_file(target, allowed)
             if not sent:
