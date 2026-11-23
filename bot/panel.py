@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 import uuid
+
+log = logging.getLogger("dsh-qq-bot.panel")
 import subprocess
 import threading
 from pathlib import Path
@@ -121,6 +124,13 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         except Exception:
             return web.json_response({"ok": False, "error": "bad json"}, status=400)
         action = str((body or {}).get("action") or "")
+        if action == "members":
+            # 成员索引由机器人进程维护，面板直接读同一份文件
+            try:
+                known = json.loads((Path("state") / "members.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                known = {}
+            return web.json_response({"ok": True, "members": known})
         if action not in ("mute", "kick", "members", "mute_state"):
             return web.json_response({"ok": False, "error": "action must be mute/kick/members"}, status=400)
         request_id = str((body or {}).get("id") or uuid.uuid4())

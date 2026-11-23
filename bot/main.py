@@ -1422,7 +1422,13 @@ class DSHBot(Client):
             resolved = Path(path).expanduser().resolve(strict=True)
         except (OSError, RuntimeError):
             return None
-        for root in self.config.send_file_roots:
+        roots = list(self.config.send_file_roots)
+        # 自动分区工作区默认在别的盘（如 D:\dsh-qqbot-temp），必须一并放行，
+        # 否则模型写在那里的图/文件会被"outside SEND_FILE_ROOTS"挡掉。
+        extra = self.rt_str("auto_group_root", "").strip()
+        if extra:
+            roots.append(extra)
+        for root in roots:
             try:
                 resolved.relative_to(Path(root).resolve())
             except (OSError, ValueError):
