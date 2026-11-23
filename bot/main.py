@@ -1472,7 +1472,8 @@ class DSHBot(Client):
             "input_mode": "replace",
             "input_state": 10,
             "content_type": "markdown",
-            "content_raw": STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip(),
+            # 空内容收尾会被客户端显示成"该消息类型暂不支持查看"，给个占位
+            "content_raw": STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip() or "📎 文件在下面",
             "event_id": state.get("event_id") or target.last_msg_id or "",
             "msg_seq": state.get("msg_seq", 1),
             "index": int(state.get("index", 0)),
@@ -2092,8 +2093,13 @@ class DSHBot(Client):
                 log.warning("model tried to stay silent on a directed message in %s; answering instead", conv_key)
                 text = text.replace(NO_REPLY_MARK, "").strip() or "在的，你说。"
             self._chat_turns.pop(conv_key, None)
+            had_media = bool(SEND_FILE_MARK.search(text) or STICKER_MARK.search(text))
             self._spawn_files(conv_key, text)
             text = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", text)).strip()
+            if had_media and not text:
+                # 文件本身就是这轮的全部内容，不必再说"没有文字输出"
+                await self._drain_queued(conv_key)
+                return
             if not text:
                 used = f"（调用了 {len(tools)} 个工具：{'、'.join(tools[:8])}）" if tools else ""
                 text = f"（本轮结束 {reason or 'done'}，没有文字输出）{used}"
