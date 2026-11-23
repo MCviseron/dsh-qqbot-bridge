@@ -1493,6 +1493,9 @@ class DSHBot(Client):
 
     async def _send_file(self, target: Target, path: str) -> bool:
         """Upload one local file into the conversation as a QQ media message."""
+        # 先把同会话的流式消息收尾：在流仍然打开时插入媒体，客户端会把它显示成
+        # "该消息类型暂不支持查看"。这条调用原本就在这里，被一次重构误删了。
+        await self._finish_stream(target.conv_key)
         file_type = FILE_TYPES.get(Path(path).suffix.lower(), 4)
         try:
             if target.kind == "group":
