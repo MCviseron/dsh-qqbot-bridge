@@ -532,6 +532,7 @@ class DSHBot(Client):
         self.pool_idx: Dict[str, str] = {}
         self._pending_quotes: Dict[str, Dict[str, Any]] = {}
         self._chat_turns: Dict[str, bool] = {}
+        self._bg_tasks: set = set()
         self.member_index: Dict[str, Dict[str, str]] = {}
         self._token: Tuple[str, float] = ("", 0.0)
 
@@ -2185,6 +2186,18 @@ class DSHBot(Client):
         log.info("delivering approval %s (%s) to %s", approval_id[:8], tool_name, target_key)
         await self.send_text(target_key, "\n".join(body), keyboard=approval_keyboard(approval_id))
 
+    def _spawn_approval(self, conv_key: str, decision: str, approval_id: str) -> None:
+        """Run the decision off the interaction handler, but never let it die silently."""
+        async def runner() -> None:
+            try:
+                await self._resolve_approval(conv_key, decision, approval_id)
+            except Exception as error:  # noqa: BLE001 - the click must still be acked
+                log.exception("approval resolve failed (%s): %s", decision, error)
+
+        task = asyncio.create_task(runner())
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
     async def _resolve_approval(self, conv_key: str, decision: str, approval_id: Optional[str]) -> None:
         if not self.owner_openid:
             await self.send_text(conv_key, "还没认领主人，无法审批。")
@@ -2785,7 +2798,7 @@ class DSHBot(Client):
         # 先回执再干活：QQ 的交互回调有硬超时，超时后客户端会把按钮 data 当文本消息发出来
         # （表现就是群里多出一条「允许 <uuid>」）。
         await self._interaction_result(interaction, 0)
-        asyncio.create_task(self._resolve_approval(conv_key, decision, approval_id))
+        self._spawn_approval(conv_key, decision, approval_id)
 
     async def _interaction_result(self, interaction: Interaction, code: int) -> None:
         try:

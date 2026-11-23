@@ -221,7 +221,17 @@ export function apply(ctx, rawConfig) {
       const id = randomUUID()
       const labels = options.map((item) => String(item.label ?? item))
       return new Promise((resolve, reject) => {
+        // 超时兜底：QQ 那边一直没人点也不能把 ask_user_question 挂死
+        const timeoutMs = Number(config.approvalTimeoutMs) || 150000
+        const deadline = setTimeout(() => {
+          if (!questionPending.has(id)) return
+          questionPending.delete(id)
+          const error = new Error("ask_user_question timed out waiting for a QQ answer")
+          error.code = "ASK_ABORTED"
+          reject(error)
+        }, timeoutMs)
         questionPending.set(id, {
+          deadline,
           resolve: (answer) => {
             const index = Number(answer?.index)
             const picked = labels[index]
@@ -525,6 +535,7 @@ export function apply(ctx, rawConfig) {
       const id = typeof body?.id === 'string' ? body.id : ''
       if (id === '') return { ok: false, error: 'id required' }
       const pending = questionPending.get(id)
+      if (pending?.deadline) clearTimeout(pending.deadline)
       if (pending === undefined) return { ok: false, error: 'this question is no longer pending' }
       questionPending.delete(id)
       try { pending.resolve(body) } catch (error) { /* already settled */ }
