@@ -1999,7 +1999,11 @@ class DSHBot(Client):
                                     encoding="utf-8",
                                 )
                                 continue
-                            if action == "kick" and not payload.get("confirmed"):
+                            if (
+                                action == "kick"
+                                and not payload.get("confirmed")
+                                and self.rt_bool("kick_confirm", True)
+                            ):
                                 if not payload.get("id"):
                                     payload["id"] = uuid.uuid4().hex[:12]
                                 # 踢人不可逆：先到主人私聊要一次二次确认
