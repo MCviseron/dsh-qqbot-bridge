@@ -145,6 +145,16 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
                 done = json.loads(target.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
+            if done.get("status") == "waiting":
+                # 踢人需要主人在私聊里二次确认：立刻回话，不等 15 秒
+                return web.json_response(
+                    {"ok": True, "pending": True, "error": None, "hint": "已发送私聊二次确认，等你点头才执行"}
+                )
+            if done.get("status") == "waiting":
+                # 踢人需要主人在私聊里二次确认：立刻回话，不等 15 秒
+                return web.json_response(
+                    {"ok": True, "pending": True, "error": None, "hint": "已发送私聊二次确认，等你点头才执行"}
+                )
             if done.get("status") == "done":
                 target.unlink(missing_ok=True)
                 return web.json_response({

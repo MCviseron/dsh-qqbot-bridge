@@ -248,6 +248,14 @@ def chunk_text(text: str, limit: int) -> List[str]:
     return [chunk for chunk in (part.strip("\n") for part in chunks) if chunk != ""]
 
 
+def parse_kick_confirm(text: str) -> Optional[Tuple[str, bool]]:
+    """'踢人确认 <id> yes|no' as sent by the confirmation buttons."""
+    match = re.search(r"踢人确认\s+(\S+)\s+(yes|no)", text or "", re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1), match.group(2).lower() == "yes"
+
+
 def parse_decision(text: str) -> Tuple[Optional[str], Optional[str]]:
     """Recognise an approval answer, optionally carrying the approval id."""
     tokens = text.strip().split()
@@ -310,6 +318,34 @@ def question_keyboard(question_id: str, options: list) -> Dict[str, Any]:
         })
     rows = [{"buttons": buttons[i:i + 2]} for i in range(0, len(buttons), 2)]
     return {"content": {"rows": rows}}
+
+
+def kick_confirm_keyboard(request_id: str) -> Dict[str, Any]:
+    """Owner-only second confirmation for an irreversible kick."""
+    def button(label: str, style: int, data: str, visited: str) -> Dict[str, Any]:
+        return {
+            "id": data,
+            "render_data": {"label": label, "visited_label": visited, "style": style},
+            "action": {
+                "type": 1,
+                "permission": {"type": 2},
+                "data": data,
+                "unsupport_tips": "请升级 QQ 后使用按钮，或直接回复「确认踢人」/「取消踢人」",
+            },
+        }
+
+    return {
+        "content": {
+            "rows": [
+                {
+                    "buttons": [
+                        button("确认踢出", 3, f"踢人确认 {request_id} yes", "✓ 已踢出"),
+                        button("取消", 0, f"踢人确认 {request_id} no", "✓ 已取消"),
+                    ]
+                }
+            ]
+        }
+    }
 
 
 def decided_keyboard(approval_id: str, label: str) -> Dict[str, Any]:
@@ -533,6 +569,8 @@ class DSHBot(Client):
         self._pending_quotes: Dict[str, Dict[str, Any]] = {}
         self._chat_turns: Dict[str, bool] = {}
         self._bg_tasks: set = set()
+        self._owner_recent: Dict[str, float] = {}
+        self._admin_confirm: Dict[str, Dict[str, Any]] = {}
         self.member_index: Dict[str, Dict[str, str]] = {}
         self._token: Tuple[str, float] = ("", 0.0)
 
@@ -1916,6 +1954,25 @@ class DSHBot(Client):
         except OSError:
             pass
 
+    def _note_owner_activity(self, conv_key: str, is_owner: bool) -> None:
+        """Group-admin tools are owner-only: remember who spoke last in this conversation."""
+        if not hasattr(self, "_owner_recent"):
+            self._owner_recent = {}
+        self._owner_recent[conv_key] = time.time() if is_owner else 0.0
+
+    def _admin_allowed(self, payload: Dict[str, Any]) -> Tuple[bool, str]:
+        """A tool call may act only when the owner is the one who just asked."""
+        conv_key = str(payload.get("convKey") or "")
+        group = str(payload.get("group") or "")
+        if conv_key.startswith("c2c:"):
+            return (conv_key == self._owner_conv(), "只有主人能使用群管理功能")
+        if conv_key and conv_key != f"group:{group}":
+            return (False, "会话与目标群不一致")
+        last = getattr(self, "_owner_recent", {}).get(conv_key, 0.0)
+        if last <= 0 or time.time() - last > self.rt_float("admin_owner_window_s", 300):
+            return (False, "只有主人能使用群管理功能（最近没有主人的指令）")
+        return (True, "")
+
     async def _admin_loop(self) -> None:
         """Execute group-admin requests queued by the panel/tools (mute / kick / members)."""
         outbox = STATE_DIR / "admin"
@@ -1934,6 +1991,31 @@ class DSHBot(Client):
                         result = {"status": "done", "ok": False, "error": "unknown action"}
                         try:
                             action = str(payload.get("action") or "")
+                            allowed, why = self._admin_allowed(payload)
+                            if not allowed:
+                                log.warning("admin %s refused: %s", action, why)
+                                path.write_text(
+                                    json.dumps({**payload, "status": "done", "ok": False, "error": why}, ensure_ascii=False),
+                                    encoding="utf-8",
+                                )
+                                continue
+                            if action == "kick" and not payload.get("confirmed"):
+                                if not payload.get("id"):
+                                    payload["id"] = uuid.uuid4().hex[:12]
+                                # 踢人不可逆：先到主人私聊要一次二次确认
+                                request_id = str(payload.get("id") or "")
+                                payload["_path"] = str(path)
+                                self._admin_confirm[request_id] = dict(payload)
+                                await self.send_text(
+                                    self._owner_conv(),
+                                    "⚠ 请求踢人：群 …" + str(payload.get("group"))[-6:] + " / 成员 " + str(payload.get("member"))[-6:],
+                                    keyboard=kick_confirm_keyboard(request_id),
+                                )
+                                path.write_text(
+                                    json.dumps({**payload, "status": "waiting"}, ensure_ascii=False),
+                                    encoding="utf-8",
+                                )
+                                continue
                             group = str(payload.get("group") or "")
                             member = str(payload.get("member") or "")
                             if action == "mute" and group and member:
@@ -2279,6 +2361,39 @@ class DSHBot(Client):
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
 
+    async def _resolve_kick_confirm(self, interaction: Interaction, request_id: str, approved: bool) -> None:
+        """Owner-only second confirmation for an irreversible kick."""
+        await self._interaction_result(interaction, 0)
+        payload = self._admin_confirm.pop(request_id, None)
+        if payload is None:
+            await self.send_text(self._owner_conv(), "这条踢人请求已经处理过了")
+            return
+        group = str(payload.get("group") or "")
+        member = str(payload.get("member") or "")
+        result_path = str(payload.pop("_path", "") or "")
+        ok, failure = False, None
+        if not approved:
+            await self.send_text(self._owner_conv(), "已取消：没有踢出 " + member[-6:])
+            failure = "cancelled by owner"
+        else:
+            try:
+                await self.api.batch_remove_group_members(
+                    group_openid=group, member_openids=[member], add_to_member_blacklist=bool(payload.get("blacklist"))
+                )
+                ok = True
+                await self.send_text(self._owner_conv(), "✅ 已踢出 " + member[-6:])
+            except Exception as error:  # noqa: BLE001 - report platform refusal to the owner
+                failure = str(error)
+                await self.send_text(self._owner_conv(), f"❌ 踢人失败：{failure}")
+        if result_path:
+            try:
+                Path(result_path).write_text(
+                    json.dumps({**payload, "status": "done", "ok": ok, "error": failure}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except OSError as error:
+                log.warning("kick result write failed: %s", error)
+
     async def _resolve_approval(self, conv_key: str, decision: str, approval_id: Optional[str]) -> None:
         if not self.owner_openid:
             await self.send_text(conv_key, "还没认领主人，无法审批。")
@@ -2503,6 +2618,7 @@ class DSHBot(Client):
         if member_openid:
             self.member_index.setdefault(conv_key, {})[short_id(member_openid).upper()] = member_openid
         is_owner = self._is_owner_group(group_openid, member_openid)
+        self._note_owner_activity(conv_key, is_owner)
         if not is_owner and member_openid:
             is_owner = await self._bind_group_owner_by_role(group_openid, member_openid)
         lowered = text.lower()
@@ -2724,6 +2840,10 @@ class DSHBot(Client):
         text = clean_content(message.content)
         self._pool_incoming(message, "c2c", user_openid, conv_key, f"用户{short_id(user_openid)}")
         lowered = text.lower()
+        kick_hit = parse_kick_confirm(text)
+        if kick_hit is not None:
+            await self._resolve_kick_confirm(interaction, *kick_hit)
+            return
         decision, approval_id = parse_decision(text)
         if decision is not None:
             if not is_owner:

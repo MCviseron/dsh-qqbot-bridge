@@ -1046,7 +1046,7 @@ export function apply(ctx, rawConfig) {
           const raw = Number(args?.minutes)
           const minutes = Number.isFinite(raw) ? raw : 10
           const seconds = minutes <= 0 ? 0 : Math.min(Math.round(minutes * 60), 60 * 60 * 24 * 30)
-          const result = await adminCall({ action: "mute", group, member: openid, seconds })
+          const result = await adminCall({ action: "mute", convKey, group, member: openid, seconds })
           return {
             ok: result.ok === true,
             member: args?.member,
@@ -1072,7 +1072,7 @@ export function apply(ctx, rawConfig) {
           const openid = resolveMember(convKey, args?.member)
           if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
           const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
-          const result = await adminCall({ action: "mute", group, member: openid, seconds: 0 })
+          const result = await adminCall({ action: "mute", convKey, group, member: openid, seconds: 0 })
           return { ok: result.ok === true, member: args?.member, op: "del", error: result.error }
         },
       },
@@ -1087,7 +1087,7 @@ export function apply(ctx, rawConfig) {
         async execute(args) {
           const convKey = String(args?.convKey || "")
           const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
-          const result = await adminCall({ action: "mute_state", group })
+          const result = await adminCall({ action: "mute_state", convKey, group })
           return { ok: result.ok === true, state: result.state, error: result.error }
         },
       },
@@ -1108,7 +1108,7 @@ export function apply(ctx, rawConfig) {
           const openid = resolveMember(convKey, args?.member)
           if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
           const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
-          const result = await adminCall({ action: "kick", group, member: openid, blacklist: args?.blacklist === true })
+          const result = await adminCall({ action: "kick", convKey, group, member: openid, blacklist: args?.blacklist === true })
           return { ok: result.ok === true, member: args?.member, error: result.error }
         },
       },
