@@ -2238,10 +2238,11 @@ class DSHBot(Client):
                                 target_group = str(payload.get("group") or "")
                                 target_member = str(payload.get("member") or "")
                                 who = self._display_name(f"group:{target_group}", target_member)
+                                group_label = await self._group_name(target_group) or ("…" + target_group[-6:])
                                 await self.send_text(
                                     self._owner_conv(),
                                     "⚠ 请求踢人" + chr(10)
-                                    + "群：…" + target_group[-6:] + chr(10)
+                                    + "群：" + group_label + chr(10)
                                     + "成员：" + who
                                     + ("" if not who.startswith("群友") else "（昵称未知，这是短号）") + chr(10)
                                     + "点下面的按钮确认，取消则不动。",
@@ -2762,6 +2763,33 @@ class DSHBot(Client):
         except asyncio.CancelledError:
             return
         await self._maybe_judge(conv_key, force_timer=True)
+
+    async def _group_name(self, group_openid: str) -> str:
+        """Group display name, cached for 5 minutes and mirrored to state/groups.json."""
+        if not group_openid:
+            return ""
+        cached = getattr(self, "_group_cache", None)
+        if cached is None:
+            cached = self._group_cache = {}
+        entry = cached.get(group_openid)
+        if entry and time.time() - entry[0] < 300:
+            return entry[1]
+        try:
+            info = await self.api.get_group_info(group_openid=group_openid)
+            name = str((info or {}).get("group_name") or "")
+            cached[group_openid] = (time.time(), name)
+            data = {key: value[1] for key, value in cached.items()}
+            try:
+                GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+                GROUPS_FILE.write_text(
+                    json.dumps({**data, "_info": info}, ensure_ascii=False), encoding="utf-8"
+                )
+            except OSError:
+                pass
+            return name
+        except Exception as error:  # noqa: BLE001 - naming is cosmetic
+            log.debug("group info unavailable: %s", error)
+            return entry[1] if entry else ""
 
     def _owner_label(self, conv_key: str, member_openid: str) -> str:
         """Owner tag with the nickname attached when we know it: 主人（𝒟𝒶𝒾𝓈𝓎）."""
@@ -3434,6 +3462,7 @@ MEMBERS_FILE = STATE_DIR / "members.json"
 STREAMS_FILE = STATE_DIR / "streams.json"
 METRICS_FILE = STATE_DIR / "metrics.json"
 METRICS_DIR = STATE_DIR / "metrics"
+GROUPS_FILE = STATE_DIR / "groups.json"
 STOP_FLAG = STATE_DIR / "stop.flag"
 SUPERVISOR_PID = STATE_DIR / "supervisor.pid"
 CHILD_PID = STATE_DIR / "child.pid"

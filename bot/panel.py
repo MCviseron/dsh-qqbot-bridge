@@ -290,6 +290,11 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
 
         metrics = read_json(Path("state") / "metrics.json", {})
         members = read_json(Path("state") / "members.json", {})
+        groups_raw = read_json(Path("state") / "groups.json", {})
+        group_names = {
+            key: value for key, value in (groups_raw or {}).items()
+            if isinstance(value, str) and key != "_info"
+        }
         member_count = sum(len(items) for items in members.values()) if isinstance(members, dict) else 0
         queue_counts = {}
         for name in ("questions", "admin"):
@@ -398,6 +403,7 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             "queues": queue_counts,
             "logs": log_sizes,
             "members": member_count,
+            "group_names": group_names,
             "series": series if range_key == "hour" else file_series[-1440:],
             "range": range_key,
             "history": history_days,

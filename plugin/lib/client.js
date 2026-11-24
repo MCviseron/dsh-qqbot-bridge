@@ -580,7 +580,8 @@ window.__ModuleLoader__.load({
               h("div", { style: T.cardTitle }, "群成员"),
               ...Object.keys(dash.members_detail || {}).length
                 ? Object.keys(dash.members_detail || {}).flatMap(function (key) {
-                    const rows = [h("div", { key: key, style: T.footNote }, key.replace("group:", "").slice(-8))]
+                    const groupName = (dash.group_names || {})[key.replace("group:", "")] || ""
+                    const rows = [h("div", { key: key, style: T.footNote }, groupName ? groupName + " · " + key.replace("group:", "").slice(-8) : key.replace("group:", "").slice(-8))]
                     ;(dash.members_detail[key] || []).forEach(function (item) {
                       rows.push(h("div", { key: key + item.tail, style: T.memberRow },
                         item.avatar
