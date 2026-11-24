@@ -2256,6 +2256,8 @@ class DSHBot(Client):
                                     entry["mute_expire_at"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(expire)) + "+08:00"
                                 await self.api.set_group_restrict_chat_setting(group_openid=group, members=[entry])
                                 result = {"status": "done", "ok": True, "seconds": seconds, "op": entry["op"]}
+                                self._bump("unmutes" if entry["op"] == "del" else "mutes")
+                                self._timeline("admin", f'mute {entry["op"]} {seconds}s')
                             elif action == "kick" and group and member:
                                 await self.api.batch_remove_group_members(
                                     group_openid=group,
@@ -2263,12 +2265,15 @@ class DSHBot(Client):
                                     add_to_member_blacklist=bool(payload.get("blacklist")),
                                 )
                                 result = {"status": "done", "ok": True}
+                                self._bump("kicks")
+                                self._timeline("admin", "kick")
                             elif action == "mute_state" and group:
                                 state = await self.api.get_group_restrict_chat_setting(group_openid=group)
                                 result = {"status": "done", "ok": True, "state": state}
                             elif action == "members":
                                 result = {"status": "done", "ok": True, "members": payload.get("known") or {}}
                         except Exception as error:  # noqa: BLE001 - report the platform message verbatim
+                            self._bump("errors")
                             result = {"status": "done", "ok": False, "error": str(error)}
                         try:
                             path.write_text(json.dumps({**payload, **result}, ensure_ascii=False), encoding="utf-8")
@@ -2298,6 +2303,8 @@ class DSHBot(Client):
                         if conv_key and question_id and options:
                             body = "**需要你确认**" + chr(10) + chr(10) + text + chr(10) + chr(10)
                             body += chr(10).join(f"{i + 1}. {label}" for i, label in enumerate(options))
+                            self._bump("questions")
+                            self._timeline("question", question_id[:8])
                             await self.send_text(conv_key, body, keyboard=question_keyboard(question_id, options))
                             log.info("question %s delivered to %s", short_id(question_id), conv_key)
                         path.unlink(missing_ok=True)
@@ -2352,6 +2359,7 @@ class DSHBot(Client):
                     self._pull_failures = 0
                 await asyncio.sleep(3)
             except Exception as error:  # noqa: BLE001 - keep the feed alive
+                self._bump("errors")
                 log.exception("pull loop error: %s", error)
                 await asyncio.sleep(3)
 
@@ -2404,13 +2412,15 @@ class DSHBot(Client):
                 return
             if NO_REPLY_MARK in text:
                 if self._chat_turns.pop(conv_key, False):
+                    self._bump("judge_silent")
                     log.info("agent stayed silent in %s (chatter judge)", conv_key)
                     await self._drain_queued(conv_key)
                     return
                 # A real question (@ or private chat) must never be answered with silence.
                 log.warning("model tried to stay silent on a directed message in %s; answering instead", conv_key)
                 text = text.replace(NO_REPLY_MARK, "").strip() or "在的，你说。"
-            self._chat_turns.pop(conv_key, None)
+            if self._chat_turns.pop(conv_key, False):
+                self._bump("judge_spoke")
             had_media = bool(SEND_FILE_MARK.search(text) or STICKER_MARK.search(text))
             self._spawn_files(conv_key, text)
             text = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", text)).strip()
@@ -2858,6 +2868,8 @@ class DSHBot(Client):
                 "- 不要重复自己说过的内容，不要总结/复述别人的聊天，不要客套，不要写成报告。",
             ]
         )
+        self._bump("judge_calls")
+        self._timeline("judge", f"{len(lines)} 行")
         log.info("judging %d line(s) of chatter in %s", len(lines), conv_key)
         await self._submit(conv_key, prompt, "群友", False, None, chat=True)
 
@@ -3067,6 +3079,7 @@ class DSHBot(Client):
         self.chime[conv_key] = {"count": 0.0, "last": time.time()}
         quote = self._quote_of(message)
         if quote is not None:
+            self._bump("quotes")
             quoted_images = await self._quote_images(quote)
             if quoted_images:
                 images = list(images) + quoted_images
@@ -3145,6 +3158,7 @@ class DSHBot(Client):
                 await self._buffer_chatter(conv_key, self._display_name(conv_key, member_openid), text)
                 await self._maybe_judge(conv_key)
         except Exception as error:  # noqa: BLE001
+            self._bump("errors")
             log.exception("group handler failed: %s", error)
 
     async def on_c2c_message_create(self, message: C2CMessage) -> None:
@@ -3284,6 +3298,7 @@ class DSHBot(Client):
 
         quote = self._quote_of(message)
         if quote is not None:
+            self._bump("quotes")
             quoted_images = await self._quote_images(quote)
             if quoted_images:
                 images = list(images) + quoted_images
@@ -3319,6 +3334,7 @@ class DSHBot(Client):
             conv_for_answer = f"c2c:{clicker}" if clicker else self._owner_conv()
             await self._interaction_result(interaction, 0)
             try:
+                self._bump("questions_answered")
                 await self.bridge.answer_question(question_id, int(raw_index))
                 log.info("question %s answered with option %s", short_id(question_id), raw_index)
             except Exception as error:  # noqa: BLE001 - the question may have expired
