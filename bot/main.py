@@ -2629,6 +2629,13 @@ class DSHBot(Client):
             return
         final = bool(event.get("final"))
         delta = str(event.get("text") or "")
+        turn_id = str(event.get("turnId") or "")
+        if final and turn_id and turn_id in self._streamed_turns:
+            # 同一回合的收尾事件重投：这条回答已经流式送出去了，别再开一个新气泡
+            log.info("duplicate final stream event for turn %s ignored", turn_id)
+            self._streams.pop(conv_key, None)
+            self._persist_streams()
+            return
         if not hasattr(self, "_stream_locks"):
             self._stream_locks = {}
         lock = self._stream_locks.setdefault(conv_key, asyncio.Lock())
@@ -2644,8 +2651,18 @@ class DSHBot(Client):
                 state = self._new_stream_state(conv_key, target, str(event.get("turnId") or ""))
                 self._streams[conv_key] = state
             if delta:
-                # The final event repeats text already streamed as deltas.
-                if not (final and state["text"].endswith(delta)):
+                if final:
+                    # 最终事件可能是「整段文本」（deltas 已经逐段流过），也可能只是最后一片。
+                    # 整段时必须以它替换，叠加会让同一段话在气泡里重复两三遍。
+                    streamed = str(state["text"]).rstrip()
+                    incoming = delta.rstrip()
+                    if not streamed or incoming.startswith(streamed) or streamed in incoming:
+                        state["text"] = delta
+                    elif streamed.endswith(incoming):
+                        state["text"] = streamed
+                    else:
+                        state["text"] = streamed + delta
+                else:
                     state["text"] += delta
             if not str(state["text"]).strip():
                 if final:
@@ -3403,6 +3420,11 @@ class DSHBot(Client):
             log.exception("c2c handler failed: %s", error)
 
     async def _handle_c2c(self, message: C2CMessage) -> None:
+        # QQ 网关会在 ack 慢或重连时重投同一个事件；私聊必须先去重，否则一轮对话会被跑两次、回两条
+        if message.id and message.id in self._seen_ids:
+            log.info("duplicate c2c event ignored: %s", message.id)
+            return
+        self._remember_id(message.id)
         log.info(
             "c2c from %s: %r",
             short_id(((message.author.user_openid if message.author else "") or "")),
