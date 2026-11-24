@@ -6,17 +6,20 @@ itself is stopped (that is what makes the 启动/关闭 buttons possible).
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import time
 import uuid
 
-log = logging.getLogger("dsh-qq-bot.panel")
 import subprocess
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+log = logging.getLogger("dsh-qq-bot.panel")
+STICKER_DIR = Path(__file__).resolve().parent.parent / "assets" / "stickers"
 
 from aiohttp import web
 
@@ -208,6 +211,75 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         return web.json_response({"ok": True, "panel": "dsh-qq-bot", "bot": control.status()})
 
     app.middlewares.append(cors)
+    async def stickers(request: web.Request) -> web.Response:
+        """List, upload, rename and delete the bot sticker pack."""
+        folder = Path(STICKER_DIR)
+        folder.mkdir(parents=True, exist_ok=True)
+
+        if request.method == "GET":
+            wanted = request.query.get("file")
+            if wanted:
+                try:
+                    target = (folder / wanted).resolve(strict=True)
+                    target.relative_to(folder.resolve())
+                except (OSError, ValueError):
+                    return web.Response(status=404)
+                if not target.is_file():
+                    return web.Response(status=404)
+                return web.FileResponse(target)
+            items = []
+            for path in sorted(folder.iterdir()):
+                if path.is_file() and path.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                    stat = path.stat()
+                    items.append({"name": path.stem, "file": path.name, "bytes": stat.st_size, "mtime": int(stat.st_mtime)})
+            return web.json_response({"ok": True, "stickers": items, "dir": str(folder)})
+
+        body = await request.json()
+        action = str((body or {}).get("action") or "upload")
+
+        def safe_stem(raw: str) -> str:
+            cleaned = "".join(ch for ch in str(raw) if ch.isalnum() or ch in "-_ ").strip()
+            return cleaned[:40]
+
+        if action == "delete":
+            stem = safe_stem((body or {}).get("name") or "")
+            removed = 0
+            for path in folder.iterdir():
+                if path.is_file() and path.stem == stem:
+                    path.unlink(missing_ok=True)
+                    removed += 1
+            return web.json_response({"ok": removed > 0, "removed": removed})
+
+        if action == "rename":
+            old = safe_stem((body or {}).get("name") or "")
+            new = safe_stem((body or {}).get("to") or "")
+            if not old or not new:
+                return web.json_response({"ok": False, "error": "name/to required"}, status=400)
+            for path in folder.iterdir():
+                if path.is_file() and path.stem == old:
+                    path.rename(folder / (new + path.suffix.lower()))
+                    return web.json_response({"ok": True, "name": new})
+            return web.json_response({"ok": False, "error": "not found"}, status=404)
+
+        raw = str((body or {}).get("data") or "")
+        name = safe_stem((body or {}).get("name") or "")
+        if not raw or not name:
+            return web.json_response({"ok": False, "error": "name/data required"}, status=400)
+        if raw.startswith("data:"):
+            header, _, encoded = raw.partition(",")
+            ext = header.split("image/", 1)[1].split(";", 1)[0].strip().lower() if "image/" in header else "png"
+            suffix = ".jpg" if ext in ("jpeg", "jpg") else "." + (ext or "png")
+        else:
+            encoded, suffix = raw, ".png"
+        try:
+            payload = base64.b64decode(encoded, validate=False)
+        except (ValueError, TypeError):
+            return web.json_response({"ok": False, "error": "bad base64"}, status=400)
+        if len(payload) > 4 * 1024 * 1024:
+            return web.json_response({"ok": False, "error": "图片超过 4MB"}, status=400)
+        target = folder / (name + suffix)
+        target.write_bytes(payload)
+        return web.json_response({"ok": True, "name": name, "file": target.name, "bytes": len(payload)})
     async def dashboard(request: web.Request) -> web.Response:
         """Aggregated counters for the panel dashboard (read-only)."""
         def read_json(path: Path, default):
@@ -305,6 +377,8 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
     app.router.add_get("/health", health)
     app.router.add_get("/api/state", state)
     app.router.add_get("/api/dashboard", dashboard)
+    app.router.add_get("/api/stickers", stickers)
+    app.router.add_post("/api/stickers", stickers)
     app.router.add_get("/api/logs", logs)
     app.router.add_post("/api/config", update_config)
     app.router.add_post("/api/manage", manage)

@@ -171,6 +171,9 @@ window.__ModuleLoader__.load({
       const [follow, setFollow] = React.useState(true)
       const [tab, setTab] = React.useState("settings")
       const [dash, setDash] = React.useState(null)
+      const [stickers, setStickers] = React.useState([])
+      const [stickerNote, setStickerNote] = React.useState("")
+      const [stickerDir, setStickerDir] = React.useState("")
       const logRef = React.useRef(null)
       React.useEffect(function () {
         const node = logRef.current
@@ -187,6 +190,16 @@ window.__ModuleLoader__.load({
       }, [call])
 
       React.useEffect(function () { load() }, [load])
+      React.useEffect(function () {
+        if (tab !== "stickers") return undefined
+        let stop = false
+        call("/api/stickers").then(function (data) {
+          if (stop) return
+          setStickers(Array.isArray(data.stickers) ? data.stickers : [])
+          setStickerDir(String(data.dir || ""))
+        }).catch(function () { if (!stop) setStickerNote("表情包目录不可达") })
+        return function () { stop = true }
+      }, [tab, call])
       React.useEffect(function () {
         if (tab !== "dashboard") return undefined
         let stop = false
@@ -347,6 +360,83 @@ window.__ModuleLoader__.load({
           body)
       }
 
+      const reloadStickers = async function () {
+        try {
+          const data = await call("/api/stickers")
+          setStickers(Array.isArray(data.stickers) ? data.stickers : [])
+          setStickerDir(String(data.dir || ""))
+        } catch (error) { setStickerNote("表情包目录不可达") }
+      }
+
+      const uploadSticker = function (event) {
+        const file = event.target.files && event.target.files[0]
+        if (!file) return
+        if (file.size > 4 * 1024 * 1024) { setStickerNote("图片超过 4MB"); return }
+        const reader = new FileReader()
+        reader.onload = async function () {
+          const name = String(file.name || "sticker").replace(/\.[^.]+$/, "")
+          try {
+            const result = await call("/api/stickers", { method: "POST", body: JSON.stringify({ action: "upload", name: name, data: String(reader.result) }) })
+            setStickerNote(result.ok ? "已上传：" + name : "上传失败：" + (result.error || ""))
+            await reloadStickers()
+          } catch (error) { setStickerNote("上传失败") }
+        }
+        reader.readAsDataURL(file)
+        event.target.value = ""
+      }
+
+      const stickerAction = async function (action, name, extra) {
+        try {
+          const result = await call("/api/stickers", { method: "POST", body: JSON.stringify(Object.assign({ action: action, name: name }, extra || {})) })
+          setStickerNote(result.ok ? (action === "delete" ? "已删除：" + name : "已改名") : "操作失败：" + (result.error || ""))
+          await reloadStickers()
+        } catch (error) { setStickerNote("操作失败") }
+      }
+
+      function stickersView() {
+        return h("div", { style: { display: "grid", gap: 14 } },
+          h("div", { style: T.actions },
+            h("label", { style: Object.assign({}, T.btn, T.btnPrimary, { cursor: "pointer" }) },
+              "上传表情包",
+              h("input", { type: "file", accept: "image/*", style: { display: "none" }, onChange: uploadSticker })),
+            h("button", { style: T.btn, onClick: reloadStickers }, "刷新"),
+            h("span", { style: T.hint }, stickers.length + " 个 · " + (stickerDir || "assets/stickers"))),
+          stickerNote ? h("div", { style: T.hint }, stickerNote) : null,
+          h("div", { style: T.grid },
+            ...(stickers.length === 0
+              ? [h("div", { style: T.card }, h("div", { style: T.hint }, "还没有表情包，点「上传表情包」加一个"))]
+              : stickers.map(function (item) {
+                  return h("div", { key: item.file, style: Object.assign({}, T.card, { justifyItems: "center" }) },
+                    h("img", {
+                      src: PANEL + "/api/stickers?file=" + encodeURIComponent(item.file),
+                      alt: item.name,
+                      style: { width: "100%", maxHeight: 120, objectFit: "contain", borderRadius: 8 },
+                    }),
+                    h("div", { style: T.cardTitle }, item.name),
+                    h("div", { style: T.hint }, Math.round(item.bytes / 1024) + " KB"),
+                    h("div", { style: T.actions },
+                      h("button", {
+                        style: T.btn,
+                        onClick: function () {
+                          const syntax = "[[sticker: " + item.name + "]]"
+                          try { navigator.clipboard.writeText(syntax) ; setStickerNote("已复制 " + syntax) } catch (error) { setStickerNote(syntax) }
+                        },
+                      }, "复制语法"),
+                      h("button", {
+                        style: T.btn,
+                        onClick: function () {
+                          const next = window.prompt("新的名字（不含扩展名）", item.name)
+                          if (next && next.trim() && next.trim() !== item.name) stickerAction("rename", item.name, { to: next.trim() })
+                        },
+                      }, "改名"),
+                      h("button", {
+                        style: T.btn,
+                        onClick: function () { if (window.confirm("删除表情包 " + item.name + "？")) stickerAction("delete", item.name) },
+                      }, "删除"))
+                  )
+                }))),
+          h("div", { style: T.hint }, "模型在回复里写 " + "[[sticker: 名字]]" + " 就会发出对应的图；名字就是文件名去掉扩展名。"))
+      }
       function dashboardView() {
         if (!dash) return h("div", { style: T.card }, h("div", { style: T.hint }, "正在读取…"))
         if (dash.offline) return h("div", { style: T.card }, h("div", { style: T.hint }, "面板不可达（守护进程没在跑）"))
@@ -438,10 +528,14 @@ window.__ModuleLoader__.load({
 
       const tabBar = h("div", { style: T.tabs },
         h("button", { style: tab === "settings" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("settings") } }, "设置"),
-        h("button", { style: tab === "dashboard" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("dashboard") } }, "数据仪表盘"))
+        h("button", { style: tab === "dashboard" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("dashboard") } }, "数据仪表盘"),
+        h("button", { style: tab === "stickers" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("stickers") } }, "表情包"))
 
       if (tab === "dashboard") {
         return h("div", { style: T.page }, h("div", { style: T.inner }, tabBar, dashboardView()))
+      }
+      if (tab === "stickers") {
+        return h("div", { style: T.page }, h("div", { style: T.inner }, tabBar, stickersView()))
       }
 
       return h("div", { style: T.page },
