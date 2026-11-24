@@ -291,10 +291,21 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         metrics = read_json(Path("state") / "metrics.json", {})
         members = read_json(Path("state") / "members.json", {})
         groups_raw = read_json(Path("state") / "groups.json", {})
-        group_names = {
-            key: value for key, value in (groups_raw or {}).items()
-            if isinstance(value, str) and key != "_info"
-        }
+        group_names = {}
+        groups_detail = []
+        for key, value in (groups_raw or {}).items():
+            if not isinstance(value, dict):
+                continue
+            group_names[key] = str(value.get("name") or "")
+            groups_detail.append({
+                "openid": key,
+                "name": str(value.get("name") or ""),
+                "memo": str(value.get("memo") or ""),
+                "class": str(value.get("class") or ""),
+                "tags": list(value.get("tags") or []),
+                "members": int(value.get("members") or 0),
+                "fetched_at": int(value.get("fetched_at") or 0),
+            })
         member_count = sum(len(items) for items in members.values()) if isinstance(members, dict) else 0
         queue_counts = {}
         for name in ("questions", "admin"):
@@ -404,6 +415,7 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             "logs": log_sizes,
             "members": member_count,
             "group_names": group_names,
+            "groups_detail": groups_detail,
             "series": series if range_key == "hour" else file_series[-1440:],
             "range": range_key,
             "history": history_days,

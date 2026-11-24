@@ -602,6 +602,7 @@ class DSHBot(Client):
         self._seed_metrics()  # 计数跨重启累计，只有「运行时长」归零
         self._bump("c2c_msgs", 0)  # 初始化并落盘计数器，仪表盘开局就有数据
         self._prune_metrics(time.time())  # 启动时清一次超过保留期的归档
+        await self._prefetch_group_profiles()
         await self._sync_panels()
         # 严格闭合：重启后先把上个进程遗留的流式会话关掉，再开始新回合
         try:
@@ -2277,6 +2278,8 @@ class DSHBot(Client):
                                 result = {
                                     "status": "done",
                                     "ok": True,
+                                    "group_name": await self._group_name(group),
+                                    "member_name": self._display_name(f"group:{group}", member),
                                     "seconds": seconds,
                                     "op": entry["op"],
                                     "still_muted": still_muted,
@@ -2764,6 +2767,49 @@ class DSHBot(Client):
             return
         await self._maybe_judge(conv_key, force_timer=True)
 
+    async def _prefetch_group_profiles(self) -> None:
+        """Warm the group profile cache so cards and the panel have names immediately."""
+        known: set = set()
+        try:
+            saved = json.loads(GROUPS_FILE.read_text(encoding="utf-8")) if GROUPS_FILE.exists() else {}
+            if isinstance(saved, dict):
+                known.update(key for key in saved if len(key) >= 20)
+        except (OSError, ValueError):
+            pass
+        try:
+            members = json.loads(MEMBERS_FILE.read_text(encoding="utf-8"))
+            if isinstance(members, dict):
+                known.update(key[6:] for key in members if key.startswith("group:"))
+        except (OSError, ValueError):
+            pass
+        for group_openid in list(known)[:10]:
+            try:
+                await self._group_name(group_openid)
+            except Exception as error:  # noqa: BLE001 - cosmetics only
+                log.debug("group profile prefetch failed: %s", error)
+
+    def _save_group_profile(self, group_openid: str, info: Dict[str, Any]) -> None:
+        """Keep the last known profile per group so the panel needs no API call."""
+        try:
+            saved = json.loads(GROUPS_FILE.read_text(encoding="utf-8")) if GROUPS_FILE.exists() else {}
+        except (OSError, ValueError):
+            saved = {}
+        if not isinstance(saved, dict):
+            saved = {}
+        saved[group_openid] = {
+            "name": str(info.get("group_name") or ""),
+            "memo": str(info.get("group_finger_memo") or ""),
+            "class": str(info.get("group_class_text") or ""),
+            "tags": list(info.get("group_tags") or []),
+            "members": int(info.get("group_member_num") or 0),
+            "fetched_at": int(time.time()),
+        }
+        try:
+            GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            GROUPS_FILE.write_text(json.dumps(saved, ensure_ascii=False), encoding="utf-8")
+        except OSError as error:
+            log.debug("group profile save failed: %s", error)
+
     async def _group_name(self, group_openid: str) -> str:
         """Group display name, cached for 5 minutes and mirrored to state/groups.json."""
         if not group_openid:
@@ -2778,14 +2824,7 @@ class DSHBot(Client):
             info = await self.api.get_group_info(group_openid=group_openid)
             name = str((info or {}).get("group_name") or "")
             cached[group_openid] = (time.time(), name)
-            data = {key: value[1] for key, value in cached.items()}
-            try:
-                GROUPS_FILE.parent.mkdir(parents=True, exist_ok=True)
-                GROUPS_FILE.write_text(
-                    json.dumps({**data, "_info": info}, ensure_ascii=False), encoding="utf-8"
-                )
-            except OSError:
-                pass
+            self._save_group_profile(group_openid, info or {})
             return name
         except Exception as error:  # noqa: BLE001 - naming is cosmetic
             log.debug("group info unavailable: %s", error)

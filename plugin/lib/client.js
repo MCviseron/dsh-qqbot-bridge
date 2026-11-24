@@ -58,6 +58,8 @@ window.__ModuleLoader__.load({
       memberAvatar: { width: 24, height: 24, borderRadius: 999, objectFit: "cover", display: "inline-block" },
       memberName: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       memberTail: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
+      chipRow: { display: "flex", flexWrap: "wrap", gap: 6 },
+      chip: { padding: "2px 8px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", fontSize: 11, color: "var(--dsw-alias-label-secondary)" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
       cardTitle: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
       cardRow: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 },
@@ -576,6 +578,30 @@ window.__ModuleLoader__.load({
                       h("span", { style: T.eventText }, String(item.text || "")))
                   })
                 : [h("div", { style: T.hint }, "还没有事件")])),
+            h("div", { style: T.card },
+              h("div", { style: T.cardTitle }, "群资料"),
+              ...(dash.groups_detail && dash.groups_detail.length
+                ? dash.groups_detail.flatMap(function (group) {
+                    const rows = [
+                      h("div", { key: group.openid + "-name", style: T.cardRow },
+                        h("span", { style: T.cardKey }, "群名"),
+                        h("span", { style: T.cardValue }, group.name || "—")),
+                      h("div", { key: group.openid + "-members", style: T.cardRow },
+                        h("span", { style: T.cardKey }, "成员数"),
+                        h("span", { style: T.cardValue }, String(group.members || 0))),
+                    ]
+                    if (group.memo) {
+                      rows.push(h("div", { key: group.openid + "-memo", style: T.hint }, group.memo))
+                    }
+                    if (group.class || (group.tags || []).length) {
+                      rows.push(h("div", { key: group.openid + "-tags", style: T.chipRow },
+                        ...[group.class].concat(group.tags || []).filter(Boolean).map(function (tag) {
+                          return h("span", { key: group.openid + tag, style: T.chip }, tag)
+                        })))
+                    }
+                    return rows
+                  })
+                : [h("div", { style: T.hint }, "还没取到群资料（机器人收到群消息后会自动缓存）")])),
             h("div", { style: T.card },
               h("div", { style: T.cardTitle }, "群成员"),
               ...Object.keys(dash.members_detail || {}).length
