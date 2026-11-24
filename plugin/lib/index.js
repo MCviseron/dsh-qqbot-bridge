@@ -1005,6 +1005,18 @@ export function apply(ctx, rawConfig) {
       for (const [tail, info] of Object.entries(known)) {
         if (raw.length >= 4 && tail.toUpperCase().includes(raw)) return info?.openid ?? info
       }
+      // 按昵称找人：群里 @ 出来的名字或自己记得的名字都能用
+      const wanted = String(member || "").trim().replace(/^@/, "").replace(/^群友/i, "")
+      if (wanted) {
+        for (const [tail, info] of Object.entries(known)) {
+          const name = String((info && typeof info === "object" && info.name) || "").trim()
+          if (name && name.toLowerCase() === wanted.toLowerCase()) return info?.openid ?? info
+        }
+        for (const [tail, info] of Object.entries(known)) {
+          const name = String((info && typeof info === "object" && info.name) || "").trim()
+          if (name && wanted.length >= 2 && name.toLowerCase().includes(wanted.toLowerCase())) return info?.openid ?? info
+        }
+      }
       if (/^[0-9A-F]{32}$/.test(raw)) return raw
       return undefined
     }
@@ -1020,7 +1032,15 @@ export function apply(ctx, rawConfig) {
           const people = convKey !== "" ? { [convKey]: all[convKey] || {} } : all
           const lines = []
           for (const [key, members] of Object.entries(people)) {
-            for (const [tail, info] of Object.entries(members || {})) lines.push({ convKey: key, tail, openid: info?.openid ?? info })
+            for (const [tail, info] of Object.entries(members || {})) {
+              lines.push({
+                convKey: key,
+                tail,
+                name: (info && typeof info === "object" && info.name) || "",
+                openid: (info && typeof info === "object" ? info.openid : info) || "",
+                avatar: (info && typeof info === "object" && info.avatar) || "",
+              })
+            }
           }
           return { ok: true, count: lines.length, members: lines }
         },

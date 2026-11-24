@@ -197,6 +197,19 @@ def load_config() -> Config:
 INLINE_TAG = re.compile(r"<(?:faceType|img|qqbot-cmd-enter|qqbot-at-user|emoji)[^>]*>", re.IGNORECASE)
 
 
+def _author_nick(message: Any) -> str:
+    """The sender's nickname as the platform reports it (username, else group card)."""
+    author = getattr(message, "author", None)
+    for value in (
+        getattr(author, "username", "") if author is not None else "",
+        getattr(author, "member_nickname", "") if author is not None else "",
+        getattr(message, "member_nickname", "") or "",
+    ):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def clean_content(content: Optional[str]) -> str:
     """Strip @bot markup, inline QQ tags, and surrounding whitespace."""
     text = (content or "").strip()
@@ -1388,19 +1401,34 @@ class DSHBot(Client):
         self._pool_sent(target, result, chunk)
         return result
 
-    def _remember_member(self, conv_key: str, member_openid: str) -> None:
-        """Index speakers (tail6 → openid) and mirror it to disk for the panel/tools."""
+    def _remember_member(self, conv_key: str, member_openid: str, nickname: str = "") -> None:
+        """Index speakers (tail6 → openid + 昵称) and mirror it to disk for the panel/tools."""
         if not member_openid:
             return
         index = self.member_index.setdefault(conv_key, {})
-        index[short_id(member_openid).upper()] = member_openid
+        tail = short_id(member_openid).upper()
+        index[tail] = member_openid
+        if nickname:
+            names = getattr(self, "_member_names", None)
+            if names is None:
+                names = self._member_names = {}
+            names.setdefault(conv_key, {})[tail] = str(nickname)[:40]
         try:
             MEMBERS_FILE.parent.mkdir(parents=True, exist_ok=True)
             MEMBERS_FILE.write_text(
                 json.dumps(
                     {
                         conv_key: {
-                            tail: {"openid": openid, "last_seen": time.strftime("%Y-%m-%d %H:%M:%S")}
+                            tail: {
+                                "openid": openid,
+                                "name": getattr(self, "_member_names", {}).get(conv_key, {}).get(tail, ""),
+                                "avatar": (
+                                    f"https://q.qlogo.cn/qqapp/{self.config.appid}/{openid}/640"
+                                    if getattr(self.config, "appid", "")
+                                    else ""
+                                ),
+                                "last_seen": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            }
                             for tail, openid in self.member_index.get(conv_key, {}).items()
                         }
                     },
@@ -2857,6 +2885,8 @@ class DSHBot(Client):
             member_openid = message.author.member_openid or message.author.user_openid or ""
         text = clean_content(message.content)
         self._bump("group_at")
+        if member_openid:
+            self._remember_member(conv_key, member_openid, _author_nick(message))
         if getattr(message, "attachments", None):
             self._bump("group_images")
         self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
@@ -3022,7 +3052,7 @@ class DSHBot(Client):
             self._remember_id(message.id)
             self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
             if member_openid:
-                self._remember_member(conv_key, member_openid)
+                self._remember_member(conv_key, member_openid, _author_nick(message))
             log.info(
                 "group message from %s: %r (keys=%s, mentions=%d)",
                 short_id(member_openid),

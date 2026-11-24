@@ -54,6 +54,10 @@ window.__ModuleLoader__.load({
       eventKind: { color: "var(--dsw-alias-state-business-primary, #2f6bff)" },
       eventText: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       footNote: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" },
+      memberRow: { display: "grid", gridTemplateColumns: "24px 1fr auto", alignItems: "center", gap: 8, fontSize: 12 },
+      memberAvatar: { width: 24, height: 24, borderRadius: 999, objectFit: "cover", display: "inline-block" },
+      memberName: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+      memberTail: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
       cardTitle: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
       cardRow: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 },
@@ -523,12 +527,19 @@ window.__ModuleLoader__.load({
                   })
                 : [h("div", { style: T.hint }, "还没有事件")])),
             h("div", { style: T.card },
-              h("div", { style: T.cardTitle }, "群成员索引"),
+              h("div", { style: T.cardTitle }, "群成员"),
               ...Object.keys(dash.members_detail || {}).length
-                ? Object.keys(dash.members_detail || {}).map(function (key) {
-                    return h("div", { key: key, style: T.cardRow },
-                      h("span", { style: T.cardKey }, key.replace("group:", "").slice(-8)),
-                      h("span", { style: T.cardValue }, String(dash.members_detail[key]) + " 人"))
+                ? Object.keys(dash.members_detail || {}).flatMap(function (key) {
+                    const rows = [h("div", { key: key, style: T.footNote }, key.replace("group:", "").slice(-8))]
+                    ;(dash.members_detail[key] || []).forEach(function (item) {
+                      rows.push(h("div", { key: key + item.tail, style: T.memberRow },
+                        item.avatar
+                          ? h("img", { src: item.avatar, alt: item.tail, style: T.memberAvatar })
+                          : h("span", { style: Object.assign({}, T.memberAvatar, { background: "var(--dsw-alias-border-l2)" }) }),
+                        h("span", { style: T.memberName }, item.name || item.tail),
+                        h("span", { style: T.memberTail }, item.tail)))
+                    })
+                    return rows
                   })
                 : [h("div", { style: T.hint }, "暂无")])),
           h("div", { style: T.card },

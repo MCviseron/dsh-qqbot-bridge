@@ -406,7 +406,12 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             "memory_mb": memory_mb,
             "errors": error_count,
             "members_detail": {
-                key: len(value) for key, value in (members or {}).items() if isinstance(value, dict)
+                key: [
+                    {"tail": tail, "name": (info or {}).get("name", ""), "avatar": (info or {}).get("avatar", "")}
+                    for tail, info in list(value.items())[:30]
+                ]
+                for key, value in (members or {}).items()
+                if isinstance(value, dict)
             } if isinstance(members, dict) else {},
             "config": state_doc.get("config", {}),
         })
