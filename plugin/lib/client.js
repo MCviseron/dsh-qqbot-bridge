@@ -34,6 +34,21 @@ window.__ModuleLoader__.load({
       tab: { padding: "6px 14px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", background: "transparent", color: "var(--dsw-alias-label-secondary)", fontSize: 13, cursor: "pointer" },
       tabActive: { background: "var(--dsw-alias-label-primary)", borderColor: "var(--dsw-alias-label-primary)", color: "var(--dsw-alias-bg-layer-3)" },
       grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
+      kpiRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 },
+      kpi: { display: "grid", gap: 4, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
+      kpiLabel: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)" },
+      kpiValue: { fontSize: 26, fontWeight: 650, letterSpacing: "-0.02em", color: "var(--dsw-alias-label-primary)", fontVariantNumeric: "tabular-nums" },
+      cardHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 },
+      legend: { display: "flex", gap: 10, flexWrap: "wrap" },
+      legendItem: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dsw-alias-label-tertiary)" },
+      legendDot: { width: 8, height: 8, borderRadius: 999, display: "inline-block" },
+      ringBox: { display: "grid", justifyItems: "center", gap: 4 },
+      ringLabel: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
+      barRow: { display: "grid", gridTemplateColumns: "42px 1fr 34px", alignItems: "center", gap: 8, fontSize: 12 },
+      barLabel: { color: "var(--dsw-alias-label-tertiary)" },
+      barTrack: { height: 8, borderRadius: 999, background: "var(--dsw-alias-border-l2, rgba(255,255,255,0.12))", overflow: "hidden" },
+      barFill: { height: "100%", borderRadius: 999 },
+      barValue: { textAlign: "right", color: "var(--dsw-alias-label-secondary)", fontVariantNumeric: "tabular-nums" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
       cardTitle: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
       cardRow: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 },
@@ -232,71 +247,153 @@ window.__ModuleLoader__.load({
         catch (error) { setMessage("操作失败") }
         setBusy(false)
       }
-      function metricCard(title, rows) {
+      const CHART_BUCKETS = 60
+
+      function buildSeries(raw, keys, buckets) {
+        const nowSec = Math.floor(Date.now() / 1000)
+        const startSec = Math.floor((nowSec - buckets * 60) / 60) * 60
+        const byTime = new Map()
+        ;(raw || []).forEach(function (row) { byTime.set(Number(row.t), row) })
+        return Array.from({ length: buckets }, function (_, index) {
+          const t = startSec + index * 60
+          const row = byTime.get(t) || {}
+          const point = { t: t }
+          keys.forEach(function (key) { point[key] = Number(row[key] || 0) })
+          return point
+        })
+      }
+
+      function polyline(points, key, max, width, height) {
+        if (max <= 0) return ""
+        const step = width / Math.max(1, points.length - 1)
+        return points.map(function (point, index) {
+          const x = (index * step).toFixed(1)
+          const y = (height - (point[key] / max) * (height - 6) - 2).toFixed(1)
+          return (index === 0 ? "M" : "L") + x + " " + y
+        }).join(" ")
+      }
+
+      function areaChart(points, keys, colors) {
+        const width = 560
+        const height = 120
+        let max = 1
+        points.forEach(function (point) {
+          keys.forEach(function (key) { if (point[key] > max) max = point[key] })
+        })
+        const children = [
+          h("rect", { key: "bg", x: 0, y: 0, width: width, height: height, fill: "transparent" }),
+        ]
+        for (let line = 1; line <= 3; line += 1) {
+          const y = (height / 4) * line
+          children.push(h("line", { key: "grid" + line, x1: 0, y1: y, x2: width, y2: y, stroke: "var(--dsw-alias-border-l2, rgba(255,255,255,0.12))", strokeWidth: 0.5, strokeDasharray: "3 4" }))
+        }
+        keys.forEach(function (key) {
+          const d = polyline(points, key, max, width, height)
+          if (!d) return
+          children.push(h("path", { key: "a" + key, d: d + " L" + width + " " + height + " L0 " + height + " Z", fill: colors[key], opacity: 0.14 }))
+          children.push(h("path", { key: "l" + key, d: d, fill: "none", stroke: colors[key], strokeWidth: 2, strokeLinejoin: "round", strokeLinecap: "round" }))
+        })
+        return h("svg", { viewBox: "0 0 " + width + " " + height, style: { width: "100%", height: 120, display: "block" } }, children)
+      }
+
+      function ring(ratio, label, detail, color) {
+        const value = Math.max(0, Math.min(1, Number(ratio) || 0))
+        const radius = 26
+        const circumference = 2 * Math.PI * radius
+        const filled = circumference * value
+        return h("div", { style: T.ringBox },
+          h("svg", { viewBox: "0 0 72 72", style: { width: 72, height: 72 } },
+            h("circle", { cx: 36, cy: 36, r: radius, fill: "none", stroke: "var(--dsw-alias-border-l2, rgba(255,255,255,0.16))", strokeWidth: 7 }),
+            h("circle", {
+              cx: 36, cy: 36, r: radius, fill: "none", stroke: color, strokeWidth: 7, strokeLinecap: "round",
+              strokeDasharray: filled.toFixed(1) + " " + circumference.toFixed(1),
+              transform: "rotate(-90 36 36)",
+            }),
+            h("text", { x: 36, y: 41, textAnchor: "middle", fontSize: 15, fill: "var(--dsw-alias-label-primary)", fontWeight: 600 }, Math.round(value * 100) + "%")),
+          h("div", { style: T.ringLabel }, label),
+          h("div", { style: T.hint }, detail))
+      }
+
+      function kpi(label, value, sub) {
+        return h("div", { style: T.kpi },
+          h("div", { style: T.kpiLabel }, label),
+          h("div", { style: T.kpiValue }, value),
+          sub ? h("div", { style: T.hint }, sub) : null)
+      }
+
+      function barRow(label, value, max, color) {
+        const width = max > 0 ? Math.round((value / max) * 100) : 0
+        return h("div", { key: label, style: T.barRow },
+          h("span", { style: T.barLabel }, label),
+          h("div", { style: T.barTrack },
+            h("div", { style: Object.assign({}, T.barFill, { width: width + "%", background: color }) })),
+          h("span", { style: T.barValue }, String(value)))
+      }
+
+      function chartCard(title, legend, body) {
         return h("div", { style: T.card },
-          h("div", { style: T.cardTitle }, title),
-          ...rows.map(function (row) {
-            return h("div", { key: title + row[0], style: T.cardRow },
-              h("span", { style: T.cardKey }, row[0]),
-              h("span", { style: T.cardValue }, String(row[1])))
-          }))
+          h("div", { style: T.cardHead },
+            h("span", { style: T.cardTitle }, title),
+            h("span", { style: T.legend }, (legend || []).map(function (item) {
+              return h("span", { key: item.label, style: T.legendItem },
+                h("span", { style: Object.assign({}, T.legendDot, { background: item.color }) }),
+                item.label)
+            }))),
+          body)
       }
 
       function dashboardView() {
-        if (!dash) {
-          return h("div", { style: T.card }, h("div", { style: T.cardTitle }, "数据仪表盘"), h("div", { style: T.hint }, "正在读取…"))
-        }
-        if (dash.offline) {
-          return h("div", { style: T.card }, h("div", { style: T.cardTitle }, "数据仪表盘"), h("div", { style: T.hint }, "面板不可达（机器人守护进程没在跑）"))
-        }
+        if (!dash) return h("div", { style: T.card }, h("div", { style: T.hint }, "正在读取…"))
+        if (dash.offline) return h("div", { style: T.card }, h("div", { style: T.hint }, "面板不可达（守护进程没在跑）"))
         const c = dash.counters || {}
         const botInfo = dash.bot || {}
         const queues = dash.queues || {}
         const logs = dash.logs || {}
         const uptime = Number(dash.uptime_s || 0)
         const human = uptime > 0 ? Math.floor(uptime / 3600) + "h " + Math.floor((uptime % 3600) / 60) + "m" : "—"
-        const logText = Object.keys(logs).map(function (name) { return name + " " + Math.round(logs[name] / 1024) + "KB" }).join("  ·  ") || "—"
-        return h("div", null,
-          h("div", { style: T.grid },
-            metricCard("运行", [
-              ["进程", botInfo.running ? "运行中" : "已停止"],
-              ["在线", botInfo.online ? "是" : "否"],
-              ["运行时长", human],
-              ["pid", botInfo.pid || "—"],
-              ["守护", botInfo.supervisor || "—"],
-            ]),
-            metricCard("消息", [
-              ["私聊", c.c2c_msgs || 0],
-              ["群聊(全部)", c.group_msgs || 0],
-              ["群 @ 直答", c.group_at || 0],
-            ]),
-            metricCard("插话判断", [
-              ["判断次数", c.judge_calls || 0],
-              ["开口", c.judge_spoke || 0],
-              ["沉默", c.judge_silent || 0],
-              ["钩子预筛跳过", c.hook_skips || 0],
-            ]),
-            metricCard("流式", [
-              ["开始", c.streams || 0],
-              ["降级为普通消息", c.stream_fallbacks || 0],
-            ]),
-            metricCard("媒体", [["已发文件", c.files_sent || 0]]),
-            metricCard("交互", [
-              ["审批卡", c.approvals || 0],
-              ["提问卡", c.questions || 0],
-            ]),
-            metricCard("群管理", [
-              ["禁言", c.mutes || 0],
-              ["解禁", c.unmutes || 0],
-              ["踢人", c.kicks || 0],
-            ]),
-            metricCard("资源", [
-              ["提问队列残留", queues.questions || 0],
-              ["管理队列残留", queues.admin || 0],
-              ["成员索引", dash.members || 0],
-              ["日志", logText],
-            ])),
-          h("div", { style: T.hint }, "计数器从机器人最近一次启动开始累计；每 3 秒落盘一次。"))
+        const points = buildSeries(dash.series, ["c2c_msgs", "group_msgs", "judge_spoke", "streams"], CHART_BUCKETS)
+        const totalMsgs = (c.c2c_msgs || 0) + (c.group_msgs || 0)
+        const judged = c.judge_calls || 0
+        const spoke = c.judge_spoke || 0
+        const speakRate = judged > 0 ? spoke / judged : 0
+        const streamed = c.streams || 0
+        const fallbacks = c.stream_fallbacks || 0
+        const streamOk = streamed > 0 ? 1 - fallbacks / streamed : 1
+        const actions = [
+          ["文件", c.files_sent || 0, "var(--dsw-alias-state-business-primary, #2f6bff)"],
+          ["审批", c.approvals || 0, "#8b5cf6"],
+          ["提问", c.questions || 0, "#0ea5e9"],
+          ["禁言", c.mutes || 0, "#f59e0b"],
+          ["解禁", c.unmutes || 0, "#22c55e"],
+          ["踢人", c.kicks || 0, "#ef4444"],
+        ]
+        const actionMax = actions.reduce(function (acc, item) { return Math.max(acc, item[1]) }, 1)
+        const logText = Object.keys(logs).map(function (name) { return name.replace(".log", "") + " " + Math.round(logs[name] / 1024) + "KB" }).join(" · ") || "—"
+        return h("div", { style: { display: "grid", gap: 14 } },
+          h("div", { style: T.kpiRow },
+            kpi("运行时长", human, (botInfo.online ? "在线" : "离线") + " · pid " + (botInfo.pid || "—")),
+            kpi("消息总数", totalMsgs, "私聊 " + (c.c2c_msgs || 0) + " · 群 " + (c.group_msgs || 0)),
+            kpi("今天已开口", spoke, "共判断 " + judged + " 次"),
+            kpi("省下的调用", c.hook_skips || 0, "钩子预筛直接跳过")),
+          chartCard("近 60 分钟活动", [
+            { label: "私聊", color: "#2f6bff" },
+            { label: "群聊", color: "#22c55e" },
+            { label: "开口", color: "#f59e0b" },
+            { label: "流式", color: "#a855f7" },
+          ], areaChart(points, ["c2c_msgs", "group_msgs", "judge_spoke", "streams"], {
+            c2c_msgs: "#2f6bff", group_msgs: "#22c55e", judge_spoke: "#f59e0b", streams: "#a855f7",
+          })),
+          h("div", { style: T.kpiRow },
+            h("div", { style: T.card }, ring(speakRate, "开口率", spoke + " / " + judged + " 次判断", "#f59e0b")),
+            h("div", { style: T.card }, ring(streamOk, "流式成功率", streamed + " 次 · 降级 " + fallbacks, "#a855f7")),
+            h("div", { style: Object.assign({}, T.card, { gridColumn: "span 2" }) },
+              h("div", { style: T.cardTitle }, "动作分布"),
+              ...actions.map(function (item) { return barRow(item[0], item[1], actionMax, item[2]) }))),
+          h("div", { style: T.kpiRow },
+            kpi("队列残留", (queues.questions || 0) + (queues.admin || 0), "提问 " + (queues.questions || 0) + " · 管理 " + (queues.admin || 0)),
+            kpi("成员索引", dash.members || 0, "本群发过言的成员"),
+            kpi("日志体积", Math.round(Object.keys(logs).reduce(function (acc, k) { return acc + logs[k] }, 0) / 1024) + " KB", logText)),
+          h("div", { style: T.hint }, "计数从机器人最近一次启动累计；曲线按分钟聚合，保留 3 小时。"))
       }
       const dot = function (ok) {
         return h("span", { style: Object.assign({}, T.dot, { background: ok === true ? "var(--dsw-alias-state-success-primary, #35c759)" : ok === false ? "var(--dsw-alias-label-error, #e5534b)" : "var(--dsw-alias-label-tertiary, #888)" }) })

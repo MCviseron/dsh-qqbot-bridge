@@ -231,6 +231,14 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
                     log_sizes[path.name] = path.stat().st_size
                 except OSError:
                     pass
+        raw_series = metrics.get("series") or {}
+        series = []
+        try:
+            for bucket in sorted(raw_series, key=lambda key: int(key))[-90:]:
+                cell = raw_series[bucket]
+                series.append({"t": int(bucket), **{k: int(v) for k, v in cell.items()}})
+        except (TypeError, ValueError):
+            series = []
         started = float(metrics.get("started_at") or 0.0)
         state_doc = {}
         try:
@@ -241,11 +249,12 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         return web.json_response({
             "ok": True,
             "bot": state_doc.get("bot", {}),
-            "counters": {key: value for key, value in metrics.items() if key != "started_at"},
+            "counters": {key: value for key, value in metrics.items() if key not in ("started_at", "series")},
             "uptime_s": int(time.time() - started) if started else None,
             "queues": queue_counts,
             "logs": log_sizes,
             "members": member_count,
+            "series": series,
             "config": state_doc.get("config", {}),
         })
     app.router.add_get("/health", health)

@@ -2010,13 +2010,27 @@ class DSHBot(Client):
             self._metrics_at = 0.0
         self._metrics[name] = int(self._metrics.get(name, 0)) + n
         now = time.time()
+        if n:
+            bucket = int(now // 60) * 60
+            series = getattr(self, "_series", None)
+            if series is None:
+                series = self._series = {}
+            cell = series.setdefault(bucket, {})
+            cell[name] = int(cell.get(name, 0)) + n
+            cutoff = now - 180 * 60
+            for stale in [key for key in series if key < cutoff]:
+                series.pop(stale, None)
         if now - float(getattr(self, "_metrics_at", 0.0)) < 3.0:
             return
         self._metrics_at = now
         try:
             METRICS_FILE.write_text(
                 json.dumps(
-                    {"started_at": getattr(self, "_started_at", 0.0), **self._metrics},
+                    {
+                        "started_at": getattr(self, "_started_at", 0.0),
+                        **self._metrics,
+                        "series": getattr(self, "_series", {}),
+                    },
                     ensure_ascii=False,
                 ),
                 encoding="utf-8",
