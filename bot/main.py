@@ -2325,6 +2325,14 @@ class DSHBot(Client):
                 else:
                     self._suppress_reply.add(conv_key)
                 log.info("stream finished (%d chars, %d frame(s)) for %s", len(state["text"]), state["index"], conv_key)
+            else:
+                # 流式被平台拒（"其它流式消息发送中"/"引导已结束"/index 冲突）时，
+                # 绝不能把整段回答丢掉——退回普通消息，保证 QQ 一定收到。
+                fallback = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip()
+                if fallback:
+                    log.warning("stream unusable for %s; falling back to a plain message", conv_key)
+                    await self.send_text(conv_key, fallback)
+                    self._streamed_turns[str(state.get("turn_id") or "")] = time.time()
             return
         if int(state["index"]) >= 1:
             await send_frame(False)
