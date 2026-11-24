@@ -2248,14 +2248,31 @@ class DSHBot(Client):
                             group = str(payload.get("group") or "")
                             member = str(payload.get("member") or "")
                             if action == "mute" and group and member:
-                                seconds = int(payload.get("seconds") or 600)
+                                raw_seconds = payload.get("seconds")
+                                # 注意：0 是「解禁」，不能被 or 600 吞成 10 分钟
+                                seconds = 600 if raw_seconds is None else int(raw_seconds)
                                 # 官方字段：op=add/del + mute_expire_at（RFC3339，带时区）
                                 entry: Dict[str, Any] = {"op": "add" if seconds > 0 else "del", "member_openid": member}
                                 if seconds > 0:
                                     expire = time.time() + seconds
                                     entry["mute_expire_at"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(expire)) + "+08:00"
                                 await self.api.set_group_restrict_chat_setting(group_openid=group, members=[entry])
-                                result = {"status": "done", "ok": True, "seconds": seconds, "op": entry["op"]}
+                                still_muted = None
+                                try:
+                                    state_now = await self.api.get_group_restrict_chat_setting(group_openid=group)
+                                    still_muted = any(
+                                        str(item.get("member_openid")) == member
+                                        for item in (state_now.get("members") or [])
+                                    )
+                                except Exception as error:  # noqa: BLE001 - state re-read is best effort
+                                    log.warning("mute state re-read failed: %s", error)
+                                result = {
+                                    "status": "done",
+                                    "ok": True,
+                                    "seconds": seconds,
+                                    "op": entry["op"],
+                                    "still_muted": still_muted,
+                                }
                                 self._bump("unmutes" if entry["op"] == "del" else "mutes")
                                 self._timeline("admin", f'mute {entry["op"]} {seconds}s')
                             elif action == "kick" and group and member:
