@@ -30,6 +30,7 @@ def make_bot(api):
     bot.api = api
     bot.rt_bool = lambda k, d=False: True
     bot.rt_float = lambda k, d=0: d
+    bot.rt_int = lambda k, d=0: d
     bot._persist_streams = lambda: None
     bot._spawn_files = lambda conv, text: None
     bot.sent = []
