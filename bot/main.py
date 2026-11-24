@@ -1588,6 +1588,8 @@ class DSHBot(Client):
             log.warning("file send failed (%s, type=%s): %s", Path(path).name, file_type, error)
             return False
         self._bump("files_sent")
+        self._bump("files_image" if file_type == 1 else "files_doc")
+        self._timeline("file", Path(path).name)
         log.info("sent file %s (type=%s) to %s", Path(path).name, file_type, target.conv_key)
         return True
 
@@ -1998,9 +2000,12 @@ class DSHBot(Client):
             pass
 
     METRIC_KEYS = (
-        "c2c_msgs", "group_msgs", "group_at", "judge_calls", "judge_spoke", "judge_silent",
-        "hook_skips", "streams", "stream_fallbacks", "files_sent", "approvals",
-        "questions", "mutes", "unmutes", "kicks",
+        "c2c_msgs", "group_msgs", "group_at", "group_images", "quotes",
+        "judge_calls", "judge_spoke", "judge_silent", "hook_skips",
+        "streams", "stream_fallbacks", "files_image", "files_doc", "files_sent",
+        "approvals", "approvals_allow", "approvals_deny",
+        "questions", "questions_answered", "question_timeouts",
+        "mutes", "unmutes", "kicks", "errors",
     )
 
     def _bump(self, name: str, n: int = 1) -> None:
@@ -2030,6 +2035,12 @@ class DSHBot(Client):
                         "started_at": getattr(self, "_started_at", 0.0),
                         **self._metrics,
                         "series": getattr(self, "_series", {}),
+                        "events": getattr(self, "_events", []),
+                        "runtime": {
+                            "inflight": sum(int(v) for v in getattr(self, "_inflight", {}).values()),
+                            "queued": len(getattr(self, "queued", {}) or {}),
+                            "chatter": sum(len(getattr(entry, "lines", [])) for entry in (getattr(self, "chatter", {}) or {}).values()),
+                        },
                     },
                     ensure_ascii=False,
                 ),
@@ -2037,6 +2048,14 @@ class DSHBot(Client):
             )
         except OSError:
             pass
+
+    def _timeline(self, kind: str, text: str) -> None:
+        """Last few interesting things, for the dashboard timeline."""
+        if not hasattr(self, "_events"):
+            self._events = []
+        self._events.append({"at": time.time(), "kind": kind, "text": str(text)[:120]})
+        if len(self._events) > 20:
+            self._events = self._events[-20:]
 
     def _note_owner_activity(self, conv_key: str, is_owner: bool) -> None:
         """Group-admin tools are owner-only: remember who spoke last in this conversation."""
@@ -2543,6 +2562,8 @@ class DSHBot(Client):
             await self.send_text(conv_key, f"审批没能送达 DSH：{error}")
             return
         self._decided[chosen] = decision
+        self._bump("approvals_allow" if decision == "allow" else "approvals_deny")
+        self._timeline("approval", f"{tool_name or 'tool'} -> {decision}")
         while len(self._decided) > 100:
             self._decided.pop(next(iter(self._decided)), None)
         label = ("✅ 已允许" if decision == "allow" else "⛔ 已拒绝") + (f"（{tool_name}）" if tool_name else "")
@@ -2734,6 +2755,8 @@ class DSHBot(Client):
             await self._maybe_judge(conv_key)
             return
         need_reply = bool(verdict.get("needReply"))
+        self._bump("judge_calls")
+        self._bump("judge_spoke" if need_reply else "judge_silent")
         note = str(verdict.get("note") or "").strip()
         if not need_reply:
             log.info("plan B: judge stayed silent%s", f" ({note[:60]})" if note else "")
@@ -2771,6 +2794,8 @@ class DSHBot(Client):
             member_openid = message.author.member_openid or message.author.user_openid or ""
         text = clean_content(message.content)
         self._bump("group_at")
+        if getattr(message, "attachments", None):
+            self._bump("group_images")
         self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
         if member_openid:
             self.member_index.setdefault(conv_key, {})[short_id(member_openid).upper()] = member_openid

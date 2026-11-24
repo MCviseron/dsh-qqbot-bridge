@@ -49,6 +49,11 @@ window.__ModuleLoader__.load({
       barTrack: { height: 8, borderRadius: 999, background: "var(--dsw-alias-border-l2, rgba(255,255,255,0.12))", overflow: "hidden" },
       barFill: { height: "100%", borderRadius: 999 },
       barValue: { textAlign: "right", color: "var(--dsw-alias-label-secondary)", fontVariantNumeric: "tabular-nums" },
+      eventRow: { display: "grid", gridTemplateColumns: "42px 62px 1fr", gap: 8, fontSize: 12, lineHeight: 1.5 },
+      eventTime: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
+      eventKind: { color: "var(--dsw-alias-state-business-primary, #2f6bff)" },
+      eventText: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+      footNote: { fontSize: 11, color: "var(--dsw-alias-label-tertiary)" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
       cardTitle: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
       cardRow: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 },
@@ -359,13 +364,17 @@ window.__ModuleLoader__.load({
         const streamed = c.streams || 0
         const fallbacks = c.stream_fallbacks || 0
         const streamOk = streamed > 0 ? 1 - fallbacks / streamed : 1
+        const runtime = dash.runtime || {}
         const actions = [
-          ["文件", c.files_sent || 0, "var(--dsw-alias-state-business-primary, #2f6bff)"],
-          ["审批", c.approvals || 0, "#8b5cf6"],
-          ["提问", c.questions || 0, "#0ea5e9"],
+          ["图片文件", c.files_image || 0, "var(--dsw-alias-state-business-primary, #2f6bff)"],
+          ["文档文件", c.files_doc || 0, "#0ea5e9"],
+          ["审批通过", c.approvals_allow || 0, "#22c55e"],
+          ["审批拒绝", c.approvals_deny || 0, "#ef4444"],
+          ["提问回答", c.questions_answered || 0, "#8b5cf6"],
+          ["提问超时", c.question_timeouts || 0, "#f97316"],
           ["禁言", c.mutes || 0, "#f59e0b"],
-          ["解禁", c.unmutes || 0, "#22c55e"],
-          ["踢人", c.kicks || 0, "#ef4444"],
+          ["解禁", c.unmutes || 0, "#14b8a6"],
+          ["踢人", c.kicks || 0, "#dc2626"],
         ]
         const actionMax = actions.reduce(function (acc, item) { return Math.max(acc, item[1]) }, 1)
         const logText = Object.keys(logs).map(function (name) { return name.replace(".log", "") + " " + Math.round(logs[name] / 1024) + "KB" }).join(" · ") || "—"
@@ -393,7 +402,35 @@ window.__ModuleLoader__.load({
             kpi("队列残留", (queues.questions || 0) + (queues.admin || 0), "提问 " + (queues.questions || 0) + " · 管理 " + (queues.admin || 0)),
             kpi("成员索引", dash.members || 0, "本群发过言的成员"),
             kpi("日志体积", Math.round(Object.keys(logs).reduce(function (acc, k) { return acc + logs[k] }, 0) / 1024) + " KB", logText)),
-          h("div", { style: T.hint }, "计数从机器人最近一次启动累计；曲线按分钟聚合，保留 3 小时。"))
+          h("div", { style: T.kpiRow },
+            kpi("内存占用", (dash.memory_mb ? dash.memory_mb + " MB" : "—"), "bot 进程工作集"),
+            kpi("日志错误", dash.errors || 0, "最近 300KB 内 [ERROR] 行"),
+            kpi("待处理", (runtime.inflight || 0) + (runtime.queued || 0) + (runtime.chatter || 0),
+              "在跑 " + (runtime.inflight || 0) + " · 排队 " + (runtime.queued || 0) + " · 待判 " + (runtime.chatter || 0)),
+            kpi("群图片/引用", (c.group_images || 0) + " / " + (c.quotes || 0), "含附件的群消息与引用次数")),
+          h("div", { style: T.kpiRow },
+            h("div", { style: T.card },
+              h("div", { style: T.cardTitle }, "最近事件"),
+              ...(dash.events && dash.events.length
+                ? dash.events.map(function (item, index) {
+                    const when = new Date(Number(item.at) * 1000)
+                    const hhmm = ("0" + when.getHours()).slice(-2) + ":" + ("0" + when.getMinutes()).slice(-2)
+                    return h("div", { key: "ev" + index, style: T.eventRow },
+                      h("span", { style: T.eventTime }, hhmm),
+                      h("span", { style: T.eventKind }, String(item.kind || "")),
+                      h("span", { style: T.eventText }, String(item.text || "")))
+                  })
+                : [h("div", { style: T.hint }, "还没有事件")])),
+            h("div", { style: T.card },
+              h("div", { style: T.cardTitle }, "群成员索引"),
+              ...Object.keys(dash.members_detail || {}).length
+                ? Object.keys(dash.members_detail || {}).map(function (key) {
+                    return h("div", { key: key, style: T.cardRow },
+                      h("span", { style: T.cardKey }, key.replace("group:", "").slice(-8)),
+                      h("span", { style: T.cardValue }, String(dash.members_detail[key]) + " 人"))
+                  })
+                : [h("div", { style: T.hint }, "暂无")])),
+          h("div", { style: T.footNote }, "计数从机器人最近一次启动累计；曲线按分钟聚合，保留 3 小时。"))
       }
       const dot = function (ok) {
         return h("span", { style: Object.assign({}, T.dot, { background: ok === true ? "var(--dsw-alias-state-success-primary, #35c759)" : ok === false ? "var(--dsw-alias-label-error, #e5534b)" : "var(--dsw-alias-label-tertiary, #888)" }) })

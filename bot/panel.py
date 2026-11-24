@@ -239,6 +239,44 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
                 series.append({"t": int(bucket), **{k: int(v) for k, v in cell.items()}})
         except (TypeError, ValueError):
             series = []
+        error_count = 0
+        try:
+            log_path = Path("logs") / "viseron_qqbotpy.log"
+            if log_path.exists():
+                with log_path.open("rb") as handle:
+                    handle.seek(max(0, log_path.stat().st_size - 300_000))
+                    error_count = handle.read().count(b"[ERROR]")
+        except OSError:
+            pass
+        memory_mb = None
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _Counters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            pid = None
+            try:
+                pid = int((Path("state") / "child.pid").read_text(encoding="utf-8").strip())
+            except (OSError, ValueError):
+                pid = None
+            if pid:
+                counters = _Counters()
+                counters.cb = ctypes.sizeof(_Counters)
+                handle = ctypes.windll.kernel32.OpenProcess(0x0400 | 0x0010, False, pid)
+                if handle:
+                    if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                        memory_mb = round(counters.WorkingSetSize / 1024 / 1024, 1)
+                    ctypes.windll.kernel32.CloseHandle(handle)
+        except Exception:  # noqa: BLE001 - metrics must never break the endpoint
+            memory_mb = None
         started = float(metrics.get("started_at") or 0.0)
         state_doc = {}
         try:
@@ -255,6 +293,13 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             "logs": log_sizes,
             "members": member_count,
             "series": series,
+            "events": list(reversed((metrics.get("events") or [])[-12:])),
+            "runtime": metrics.get("runtime") or {},
+            "memory_mb": memory_mb,
+            "errors": error_count,
+            "members_detail": {
+                key: len(value) for key, value in (members or {}).items() if isinstance(value, dict)
+            } if isinstance(members, dict) else {},
             "config": state_doc.get("config", {}),
         })
     app.router.add_get("/health", health)
