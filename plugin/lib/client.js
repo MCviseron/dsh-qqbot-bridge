@@ -181,6 +181,9 @@ window.__ModuleLoader__.load({
       const [stickers, setStickers] = React.useState([])
       const [stickerNote, setStickerNote] = React.useState("")
       const [stickerDir, setStickerDir] = React.useState("")
+      const [renameFile, setRenameFile] = React.useState("")
+      const [renameValue, setRenameValue] = React.useState("")
+      const [deleteFile, setDeleteFile] = React.useState("")
       const logRef = React.useRef(null)
       React.useEffect(function () {
         const node = logRef.current
@@ -419,7 +422,33 @@ window.__ModuleLoader__.load({
                       alt: item.name,
                       style: { width: "100%", maxHeight: 120, objectFit: "contain", borderRadius: 8 },
                     }),
-                    h("div", { style: T.cardTitle }, item.name),
+                    renameFile === item.file
+                      ? h("div", { style: { display: "grid", gap: 6, width: "100%" } },
+                          h("input", {
+                            style: Object.assign({}, T.input, { width: "100%", textAlign: "center" }),
+                            value: renameValue,
+                            autoFocus: true,
+                            onChange: function (event) { setRenameValue(event.target.value) },
+                            onKeyDown: function (event) {
+                              if (event.key === "Enter" && renameValue.trim() && renameValue.trim() !== item.name) {
+                                stickerAction("rename", item.name, { to: renameValue.trim() })
+                                setRenameFile("")
+                              }
+                              if (event.key === "Escape") setRenameFile("")
+                            },
+                          }),
+                          h("div", { style: T.actions },
+                            h("button", {
+                              style: Object.assign({}, T.btn, T.btnPrimary),
+                              onClick: function () {
+                                const next = renameValue.trim()
+                                if (!next || next === item.name) { setRenameFile(""); return }
+                                stickerAction("rename", item.name, { to: next })
+                                setRenameFile("")
+                              },
+                            }, "保存"),
+                            h("button", { style: T.btn, onClick: function () { setRenameFile("") } }, "取消")))
+                      : h("div", { style: T.cardTitle }, item.name),
                     h("div", { style: T.hint }, Math.round(item.bytes / 1024) + " KB"),
                     h("div", { style: T.actions },
                       h("button", {
@@ -432,14 +461,23 @@ window.__ModuleLoader__.load({
                       h("button", {
                         style: T.btn,
                         onClick: function () {
-                          const next = window.prompt("新的名字（不含扩展名）", item.name)
-                          if (next && next.trim() && next.trim() !== item.name) stickerAction("rename", item.name, { to: next.trim() })
+                          setRenameFile(item.file)
+                          setRenameValue(item.name)
+                          setStickerNote("")
                         },
                       }, "改名"),
                       h("button", {
-                        style: T.btn,
-                        onClick: function () { if (window.confirm("删除表情包 " + item.name + "？")) stickerAction("delete", item.name) },
-                      }, "删除"))
+                        style: deleteFile === item.file ? Object.assign({}, T.btn, { color: "#ef4444", borderColor: "#ef4444" }) : T.btn,
+                        onClick: function () {
+                          if (deleteFile === item.file) {
+                            setDeleteFile("")
+                            stickerAction("delete", item.name)
+                          } else {
+                            setDeleteFile(item.file)
+                            setStickerNote("再点一次「确认删除」移除 " + item.name)
+                          }
+                        },
+                      }, deleteFile === item.file ? "确认删除" : "删除"))
                   )
                 }))),
           h("div", { style: T.hint }, "模型在回复里写 " + "[[sticker: 名字]]" + " 就会发出对应的图；名字就是文件名去掉扩展名。"))
