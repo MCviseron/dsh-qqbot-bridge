@@ -2713,6 +2713,13 @@ class DSHBot(Client):
             return
         await self._maybe_judge(conv_key, force_timer=True)
 
+    def _owner_label(self, conv_key: str, member_openid: str) -> str:
+        """Owner tag with the nickname attached when we know it: 主人（𝒟𝒶𝒾𝓈𝓎）."""
+        nick = self._display_name(conv_key, member_openid) if member_openid else ""
+        if nick and not nick.startswith("群友"):
+            return f"主人（{nick}）"
+        return "主人"
+
     def _last_speaker_name(self, conv_key: str, lines: List[str]) -> str:
         """Resolve the newest buffered speaker ('[10:00] 名字: 内容') back to a nickname."""
         for line in reversed(lines or []):
@@ -3051,7 +3058,7 @@ class DSHBot(Client):
         await self._queue_message(
             conv_key,
             text,
-            "主人" if is_owner else self._display_name(conv_key, member_openid),
+            self._owner_label(conv_key, member_openid) if is_owner else self._display_name(conv_key, member_openid),
             is_owner,
             images,
             chat=chat,
@@ -3268,7 +3275,7 @@ class DSHBot(Client):
         await self._queue_message(
             conv_key,
             text,
-            "主人" if is_owner else f"用户{short_id(user_openid)}",
+            self._owner_label(conv_key, user_openid) if is_owner else f"用户{short_id(user_openid)}",
             is_owner,
             images,
             quote=quote,
