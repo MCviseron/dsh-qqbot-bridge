@@ -2713,6 +2713,20 @@ class DSHBot(Client):
             return
         await self._maybe_judge(conv_key, force_timer=True)
 
+    def _last_speaker_name(self, conv_key: str, lines: List[str]) -> str:
+        """Resolve the newest buffered speaker ('[10:00] 名字: 内容') back to a nickname."""
+        for line in reversed(lines or []):
+            body = str(line)
+            if "]" in body:
+                body = body.split("]", 1)[1].strip()
+            name = body.split(":", 1)[0].strip()
+            if not name:
+                continue
+            tail = name.upper().replace("群友", "")
+            openid = self.member_index.get(conv_key, {}).get(tail, "")
+            return self._display_name(conv_key, openid) if openid else name
+        return "群友"
+
     def _interject_hook(self, conv_key: str, lines: List[str]) -> bool:
         """Cheap pre-check: is this batch worth one model call at all?"""
         if not lines:
@@ -2760,7 +2774,7 @@ class DSHBot(Client):
             self.chatter.pop(conv_key, None)
             joined = chr(10).join(line.split(": ", 1)[-1] for line in lines)
             log.info("chatter named the bot; answering instead of judging (%d line(s))", len(lines))
-            await self._submit(conv_key, joined, "群友", False, None, chat=False)
+            await self._submit(conv_key, joined, self._last_speaker_name(conv_key, lines), False, None, chat=False)
             return
 
         entry.lines.clear()
