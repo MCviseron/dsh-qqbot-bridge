@@ -1418,6 +1418,9 @@ class DSHBot(Client):
         """Index speakers (tail6 → openid + 昵称) and mirror it to disk for the panel/tools."""
         if not member_openid:
             return
+        if not re.fullmatch(r"[0-9A-Fa-f]{32}", str(member_openid)):
+            # 只认真实的 openid：测试桩/脏数据不允许污染 state/members.json
+            return
         index = self.member_index.setdefault(conv_key, {})
         tail = short_id(member_openid).upper()
         index[tail] = member_openid

@@ -537,7 +537,7 @@ window.__ModuleLoader__.load({
                           ? h("img", { src: item.avatar, alt: item.tail, style: T.memberAvatar })
                           : h("span", { style: Object.assign({}, T.memberAvatar, { background: "var(--dsw-alias-border-l2)" }) }),
                         h("span", { style: T.memberName }, item.name || item.tail),
-                        h("span", { style: T.memberTail }, item.tail)))
+                        h("span", { style: T.memberTail }, item.name ? item.tail : "")))
                     })
                     return rows
                   })
