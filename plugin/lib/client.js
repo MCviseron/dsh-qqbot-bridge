@@ -58,6 +58,7 @@ window.__ModuleLoader__.load({
       memberAvatar: { width: 24, height: 24, borderRadius: 999, objectFit: "cover", display: "inline-block" },
       memberName: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       memberTail: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
+      memberList: { maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 },
       chipRow: { display: "flex", flexWrap: "wrap", gap: 6 },
       chip: { padding: "2px 8px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", fontSize: 11, color: "var(--dsw-alias-label-secondary)" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
@@ -603,19 +604,23 @@ window.__ModuleLoader__.load({
                   })
                 : [h("div", { style: T.hint }, "还没取到群资料（机器人收到群消息后会自动缓存）")])),
             h("div", { style: T.card },
-              h("div", { style: T.cardTitle }, "群成员"),
+              h("div", { style: T.cardTitle }, "群成员 · " + Object.keys(dash.members_detail || {}).reduce(function (sum, key) { return sum + ((dash.members_detail[key] || []).length) }, 0)),
               ...Object.keys(dash.members_detail || {}).length
                 ? Object.keys(dash.members_detail || {}).flatMap(function (key) {
                     const groupName = (dash.group_names || {})[key.replace("group:", "")] || ""
+                    const list = dash.members_detail[key] || []
                     const rows = [h("div", { key: key, style: T.footNote }, groupName ? groupName + " · " + key.replace("group:", "").slice(-8) : key.replace("group:", "").slice(-8))]
-                    ;(dash.members_detail[key] || []).forEach(function (item) {
-                      rows.push(h("div", { key: key + item.tail, style: T.memberRow },
-                        item.avatar
-                          ? h("img", { src: item.avatar, alt: item.tail, style: T.memberAvatar })
-                          : h("span", { style: Object.assign({}, T.memberAvatar, { background: "var(--dsw-alias-border-l2)" }) }),
-                        h("span", { style: T.memberName }, item.name || item.tail),
-                        h("span", { style: T.memberTail }, item.name ? item.tail : "")))
-                    })
+                    rows.push(h("div", { key: key + "-list", style: T.memberList },
+                      ...(list.length
+                        ? list.map(function (item) {
+                            return h("div", { key: key + item.tail, style: T.memberRow },
+                              item.avatar
+                                ? h("img", { src: item.avatar, alt: item.tail, style: T.memberAvatar })
+                                : h("span", { style: Object.assign({}, T.memberAvatar, { background: "var(--dsw-alias-border-l2)" }) }),
+                              h("span", { style: T.memberName }, item.name || item.tail),
+                              h("span", { style: T.memberTail }, item.name ? item.tail : ""))
+                          })
+                        : [h("div", { key: key + "-empty", style: T.hint }, "暂无")])))
                     return rows
                   })
                 : [h("div", { style: T.hint }, "暂无")])),
@@ -628,7 +633,7 @@ window.__ModuleLoader__.load({
                     h("span", { style: T.cardValue }, item.minutes + " 分钟 · " + item.total + " 次事件"))
                 })
               : [h("div", { style: T.hint }, "还没有归档文件（每分钟结束后自动写一行 JSONL）")])),
-          h("div", { style: T.footNote }, "计数从机器人最近一次启动累计；近 60 分钟读内存，今天/近 7 天读磁盘归档。"))
+          h("div", { style: T.footNote }, "计数与曲线跨重启保留（读 state/metrics），只有运行时长按本次启动计算。"))
       }
       const dot = function (ok) {
         return h("span", { style: Object.assign({}, T.dot, { background: ok === true ? "var(--dsw-alias-state-success-primary, #35c759)" : ok === false ? "var(--dsw-alias-label-error, #e5534b)" : "var(--dsw-alias-label-tertiary, #888)" }) })
