@@ -30,6 +30,15 @@ window.__ModuleLoader__.load({
       labelBox: { display: "grid", gap: 2, minWidth: 0 },
       title: { fontSize: 13, color: "var(--dsw-alias-label-primary)" },
       hint: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)" },
+      tabs: { display: "flex", gap: 8, marginBottom: 4 },
+      tab: { padding: "6px 14px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", background: "transparent", color: "var(--dsw-alias-label-secondary)", fontSize: 13, cursor: "pointer" },
+      tabActive: { background: "var(--dsw-alias-label-primary)", borderColor: "var(--dsw-alias-label-primary)", color: "var(--dsw-alias-bg-layer-3)" },
+      grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
+      card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
+      cardTitle: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
+      cardRow: { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 },
+      cardKey: { color: "var(--dsw-alias-label-tertiary)" },
+      cardValue: { color: "var(--dsw-alias-label-secondary)", fontVariantNumeric: "tabular-nums" },
       sectionTitle: { fontSize: 12, letterSpacing: "0.04em", color: "var(--dsw-alias-label-tertiary)", margin: "10px 0 2px" },
       input: { width: 132, padding: "5px 8px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", textAlign: "right" },
       inputWide: { width: 260, textAlign: "left" },
@@ -140,6 +149,8 @@ window.__ModuleLoader__.load({
       const [logs, setLogs] = React.useState([])
       const [paused, setPaused] = React.useState(false)
       const [follow, setFollow] = React.useState(true)
+      const [tab, setTab] = React.useState("settings")
+      const [dash, setDash] = React.useState(null)
       const logRef = React.useRef(null)
       React.useEffect(function () {
         const node = logRef.current
@@ -156,6 +167,21 @@ window.__ModuleLoader__.load({
       }, [call])
 
       React.useEffect(function () { load() }, [load])
+      React.useEffect(function () {
+        if (tab !== "dashboard") return undefined
+        let stop = false
+        const tick = async function () {
+          try {
+            const data = await call("/api/dashboard")
+            if (!stop) setDash(data)
+          } catch (error) {
+            if (!stop) setDash({ offline: true })
+          }
+        }
+        tick()
+        const timer = setInterval(tick, 5000)
+        return function () { stop = true; clearInterval(timer) }
+      }, [tab, call])
       React.useEffect(function () {
         const timer = setInterval(load, 8000)
         return function () { clearInterval(timer) }
@@ -206,12 +232,87 @@ window.__ModuleLoader__.load({
         catch (error) { setMessage("操作失败") }
         setBusy(false)
       }
+      function metricCard(title, rows) {
+        return h("div", { style: T.card },
+          h("div", { style: T.cardTitle }, title),
+          ...rows.map(function (row) {
+            return h("div", { key: title + row[0], style: T.cardRow },
+              h("span", { style: T.cardKey }, row[0]),
+              h("span", { style: T.cardValue }, String(row[1])))
+          }))
+      }
+
+      function dashboardView() {
+        if (!dash) {
+          return h("div", { style: T.card }, h("div", { style: T.cardTitle }, "数据仪表盘"), h("div", { style: T.hint }, "正在读取…"))
+        }
+        if (dash.offline) {
+          return h("div", { style: T.card }, h("div", { style: T.cardTitle }, "数据仪表盘"), h("div", { style: T.hint }, "面板不可达（机器人守护进程没在跑）"))
+        }
+        const c = dash.counters || {}
+        const botInfo = dash.bot || {}
+        const queues = dash.queues || {}
+        const logs = dash.logs || {}
+        const uptime = Number(dash.uptime_s || 0)
+        const human = uptime > 0 ? Math.floor(uptime / 3600) + "h " + Math.floor((uptime % 3600) / 60) + "m" : "—"
+        const logText = Object.keys(logs).map(function (name) { return name + " " + Math.round(logs[name] / 1024) + "KB" }).join("  ·  ") || "—"
+        return h("div", null,
+          h("div", { style: T.grid },
+            metricCard("运行", [
+              ["进程", botInfo.running ? "运行中" : "已停止"],
+              ["在线", botInfo.online ? "是" : "否"],
+              ["运行时长", human],
+              ["pid", botInfo.pid || "—"],
+              ["守护", botInfo.supervisor || "—"],
+            ]),
+            metricCard("消息", [
+              ["私聊", c.c2c_msgs || 0],
+              ["群聊(全部)", c.group_msgs || 0],
+              ["群 @ 直答", c.group_at || 0],
+            ]),
+            metricCard("插话判断", [
+              ["判断次数", c.judge_calls || 0],
+              ["开口", c.judge_spoke || 0],
+              ["沉默", c.judge_silent || 0],
+              ["钩子预筛跳过", c.hook_skips || 0],
+            ]),
+            metricCard("流式", [
+              ["开始", c.streams || 0],
+              ["降级为普通消息", c.stream_fallbacks || 0],
+            ]),
+            metricCard("媒体", [["已发文件", c.files_sent || 0]]),
+            metricCard("交互", [
+              ["审批卡", c.approvals || 0],
+              ["提问卡", c.questions || 0],
+            ]),
+            metricCard("群管理", [
+              ["禁言", c.mutes || 0],
+              ["解禁", c.unmutes || 0],
+              ["踢人", c.kicks || 0],
+            ]),
+            metricCard("资源", [
+              ["提问队列残留", queues.questions || 0],
+              ["管理队列残留", queues.admin || 0],
+              ["成员索引", dash.members || 0],
+              ["日志", logText],
+            ])),
+          h("div", { style: T.hint }, "计数器从机器人最近一次启动开始累计；每 3 秒落盘一次。"))
+      }
       const dot = function (ok) {
         return h("span", { style: Object.assign({}, T.dot, { background: ok === true ? "var(--dsw-alias-state-success-primary, #35c759)" : ok === false ? "var(--dsw-alias-label-error, #e5534b)" : "var(--dsw-alias-label-tertiary, #888)" }) })
       }
 
+      const tabBar = h("div", { style: T.tabs },
+        h("button", { style: tab === "settings" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("settings") } }, "设置"),
+        h("button", { style: tab === "dashboard" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("dashboard") } }, "数据仪表盘"))
+
+      if (tab === "dashboard") {
+        return h("div", { style: T.page }, h("div", { style: T.inner }, tabBar, dashboardView()))
+      }
+
       return h("div", { style: T.page },
         h("div", { style: T.inner },
+          tabBar,
           h("div", { style: T.actions },
             h("span", { style: T.badge }, dot(!!bot.running), "进程 · " + (bot.running ? "运行中" : "已停止")),
             h("span", { style: T.badge }, dot(!!bot.online), "在线 · " + (bot.online ? "是" : "否")),

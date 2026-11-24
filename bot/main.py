@@ -182,9 +182,9 @@ def load_config() -> Config:
         stale_prompt_s=float(_env("STALE_PROMPT_S", "90")),
         owner_window_s=float(_env("OWNER_WINDOW_S", "180")),
         group_chat_window_s=float(_env("GROUP_CHAT_WINDOW_S", "300")),
-        chatter_batch=int(_env("GROUP_CHATTER_BATCH", "4")),
-        chatter_max_s=float(_env("GROUP_CHATTER_MAX_S", "60")),
-        chatter_cooldown_s=float(_env("GROUP_CHATTER_COOLDOWN_S", "90")),
+        chatter_batch=int(_env("GROUP_CHATTER_BATCH", "8")),
+        chatter_max_s=float(_env("GROUP_CHATTER_MAX_S", "120")),
+        chatter_cooldown_s=float(_env("GROUP_CHATTER_COOLDOWN_S", "45")),
         bot_say_memory_s=float(_env("BOT_SAY_MEMORY_S", "300")),
         stuck_turn_s=float(_env("STUCK_TURN_S", "180")),
     )
@@ -567,9 +567,11 @@ class DSHBot(Client):
         self.pool: Dict[str, PooledMessage] = {}
         self.pool_idx: Dict[str, str] = {}
         self._pending_quotes: Dict[str, Dict[str, Any]] = {}
+        self._started_at = time.time()
         self._chat_turns: Dict[str, bool] = {}
         self._bg_tasks: set = set()
         self._owner_recent: Dict[str, float] = {}
+        self._last_group_at: Dict[str, float] = {}
         self._stream_locks: Dict[str, asyncio.Lock] = {}
         self._stream_holdoff: Dict[str, float] = {}
         self._admin_confirm: Dict[str, Dict[str, Any]] = {}
@@ -584,6 +586,7 @@ class DSHBot(Client):
             log.info("[%s] bridge %s (%s)", self.config.botname, health.get("service"), self.config.bridge_url)
         except BridgeError as error:
             log.warning("[%s] bridge unreachable: %s", self.config.botname, error)
+        self._bump("c2c_msgs", 0)  # 初始化并落盘计数器，仪表盘开局就有数据
         await self._sync_panels()
         # 严格闭合：重启后先把上个进程遗留的流式会话关掉，再开始新回合
         try:
@@ -1584,6 +1587,7 @@ class DSHBot(Client):
         except Exception as error:  # noqa: BLE001 - platform rejects unsupported media
             log.warning("file send failed (%s, type=%s): %s", Path(path).name, file_type, error)
             return False
+        self._bump("files_sent")
         log.info("sent file %s (type=%s) to %s", Path(path).name, file_type, target.conv_key)
         return True
 
@@ -1895,8 +1899,8 @@ class DSHBot(Client):
         if stickers and text.strip():
             text = text + "\n（想发个表情包时，单独一行写 [[sticker: 名字]]，可选：" + ",".join(stickers[:12]) + "）"
         if chat and text.strip():
-            # 闲聊只交代场景，不规定长度和工具用法
-            text = "【闲聊模式】简短口语回 1~3 句，不要调用工具、不要复述过程。" + chr(10) + text
+            # 长度与"别复述过程"由插件侧的群聊指令负责，这里只补一条不重复的话
+            text = "【闲聊模式】不要调用工具。" + chr(10) + text
         self._chat_turns[conv_key] = bool(chat)
         try:
             await self.bridge.inbound(
@@ -1990,6 +1994,33 @@ class DSHBot(Client):
         try:
             CURSOR_FILE.parent.mkdir(parents=True, exist_ok=True)
             CURSOR_FILE.write_text(str(cursor), encoding="utf-8")
+        except OSError:
+            pass
+
+    METRIC_KEYS = (
+        "c2c_msgs", "group_msgs", "group_at", "judge_calls", "judge_spoke", "judge_silent",
+        "hook_skips", "streams", "stream_fallbacks", "files_sent", "approvals",
+        "questions", "mutes", "unmutes", "kicks",
+    )
+
+    def _bump(self, name: str, n: int = 1) -> None:
+        """Cheap counters for the dashboard; never allowed to break a handler."""
+        if not hasattr(self, "_metrics"):
+            self._metrics = {key: 0 for key in self.METRIC_KEYS}
+            self._metrics_at = 0.0
+        self._metrics[name] = int(self._metrics.get(name, 0)) + n
+        now = time.time()
+        if now - float(getattr(self, "_metrics_at", 0.0)) < 3.0:
+            return
+        self._metrics_at = now
+        try:
+            METRICS_FILE.write_text(
+                json.dumps(
+                    {"started_at": getattr(self, "_started_at", 0.0), **self._metrics},
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
         except OSError:
             pass
 
@@ -2363,6 +2394,7 @@ class DSHBot(Client):
                 return
             state = self._streams.get(conv_key)
             if state is None:
+                self._bump("streams")
                 state = self._new_stream_state(conv_key, target, str(event.get("turnId") or ""))
                 self._streams[conv_key] = state
             if delta:
@@ -2380,6 +2412,7 @@ class DSHBot(Client):
                 if not ok:
                     fallback = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip()
                     if fallback and int(state.get("index", 0)) > 0:
+                        self._bump("stream_fallbacks")
                         log.warning("stream unusable for %s; falling back to a plain message", conv_key)
                         await self.send_text(conv_key, fallback)
                         fallback_sent = True
@@ -2429,6 +2462,7 @@ class DSHBot(Client):
         body.append(f"> 来源：{self.conv_label(str(event.get('convKey') or ''))}")
         body.append("")
         body.append("点下面的 **允许 / 拒绝** 按钮，或直接回复「允许」/「拒绝」；超时按拒绝。")
+        self._bump("approvals")
         log.info("delivering approval %s (%s) to %s", approval_id[:8], tool_name, target_key)
         await self.send_text(target_key, "\n".join(body), keyboard=approval_keyboard(approval_id))
 
@@ -2537,6 +2571,25 @@ class DSHBot(Client):
             return
         await self._maybe_judge(conv_key, force_timer=True)
 
+    def _interject_hook(self, conv_key: str, lines: List[str]) -> bool:
+        """Cheap pre-check: is this batch worth one model call at all?"""
+        if not lines:
+            return False
+        text = chr(10).join(lines)
+        if self.addresses_bot(text):
+            return True
+        if "?" in text or "？" in text:
+            return True
+        lowered = text.lower()
+        for name in ("大肥鱼", "机器人", "dsh", "鱼"):
+            if name in lowered:
+                return True
+        last = getattr(self, "_last_group_at", {}).get(conv_key, 0.0)
+        cold = self.rt_float("interject_cold_s", 1200)
+        if last and time.time() - last > cold:
+            return True
+        return False
+
     async def _maybe_judge(self, conv_key: str, *, force_timer: bool = False) -> None:
         """Ask the agent whether it wants to say something; it may stay silent."""
         entry = self.chatter.get(conv_key)
@@ -2547,6 +2600,12 @@ class DSHBot(Client):
         if self._in_quiet_hours():
             return
         now = time.time()
+        if self.rt_bool("interject_hook_only", True) and not self._interject_hook(conv_key, entry.lines):
+            # 没有钩子就不花一次模型调用；消息继续攒在缓冲里，等下一个钩子一起判
+            entry.last_judge_at = now
+            self._bump("hook_skips")
+            log.info("chatter skipped (no hook) in %s", conv_key)
+            return
         if now - entry.last_judge_at < self.rt_float("chatter_cooldown_s", self.config.chatter_cooldown_s):
             return
         if not force_timer and len(entry.lines) < self.rt_int("chatter_batch", self.config.chatter_batch):
@@ -2697,11 +2756,15 @@ class DSHBot(Client):
         if message.author is not None:
             member_openid = message.author.member_openid or message.author.user_openid or ""
         text = clean_content(message.content)
+        self._bump("group_at")
         self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
         if member_openid:
             self.member_index.setdefault(conv_key, {})[short_id(member_openid).upper()] = member_openid
         is_owner = self._is_owner_group(group_openid, member_openid)
         self._note_owner_activity(conv_key, is_owner)
+        if not hasattr(self, "_last_group_at"):
+            self._last_group_at = {}
+        self._last_group_at[conv_key] = time.time()
         if not is_owner and member_openid:
             is_owner = await self._bind_group_owner_by_role(group_openid, member_openid)
         lowered = text.lower()
@@ -2847,6 +2910,7 @@ class DSHBot(Client):
             if not group_openid:
                 return
             conv_key = f"group:{group_openid}"
+            self._bump("group_msgs")
             member_openid = ""
             if message.author is not None:
                 member_openid = message.author.member_openid or message.author.user_openid or ""
@@ -2907,6 +2971,7 @@ class DSHBot(Client):
         )
         if not self.rt_bool("enabled", True) or not self.rt_bool("c2c_enabled", True):
             return
+        self._bump("c2c_msgs")
         user_openid = message.author.user_openid if message.author is not None else ""
         if not user_openid:
             return
@@ -3135,6 +3200,7 @@ STATE_DIR = ROOT / "state"
 LOG_DIR = ROOT / "logs"
 MEMBERS_FILE = STATE_DIR / "members.json"
 STREAMS_FILE = STATE_DIR / "streams.json"
+METRICS_FILE = STATE_DIR / "metrics.json"
 STOP_FLAG = STATE_DIR / "stop.flag"
 SUPERVISOR_PID = STATE_DIR / "supervisor.pid"
 CHILD_PID = STATE_DIR / "child.pid"

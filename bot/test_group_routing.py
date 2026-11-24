@@ -77,7 +77,21 @@ def make_bot(owner_bound=True):
     bot.recent_images = {}
     bot._inflight_at = {}
     bot._rate = {}
-    bot.rt = None
+    # 用例验证的是判断触发与提示词本身：固定 4 条一批，并关掉省钱预筛
+    bot.rt = type("RT", (), {
+        "get_bool": lambda self, key, default=True: (
+            False if key in ("interject_hook_only", "group_at_only") else default
+        ),
+        "get_int": lambda self, key, default=0: 4 if key == "chatter_batch" else default,
+        "get_float": lambda self, key, default=0.0: {
+            "bot_say_memory_s": 300.0,
+            "chatter_max_s": 0.05,
+            "chatter_cooldown_s": 0.0,
+            "stuck_turn_s": 180.0,
+        }.get(key, default),
+        "get_str": lambda self, key, default="": default,
+        "get": lambda self, key, default=None: default,
+    })()
     bot._role_probe_failed_at = 0.0
     bot._msg_seq = 0
     bot._acks = {}

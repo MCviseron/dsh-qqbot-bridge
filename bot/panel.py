@@ -208,8 +208,49 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         return web.json_response({"ok": True, "panel": "dsh-qq-bot", "bot": control.status()})
 
     app.middlewares.append(cors)
+    async def dashboard(request: web.Request) -> web.Response:
+        """Aggregated counters for the panel dashboard (read-only)."""
+        def read_json(path: Path, default):
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return default
+
+        metrics = read_json(Path("state") / "metrics.json", {})
+        members = read_json(Path("state") / "members.json", {})
+        member_count = sum(len(items) for items in members.values()) if isinstance(members, dict) else 0
+        queue_counts = {}
+        for name in ("questions", "admin"):
+            folder = Path("state") / name
+            queue_counts[name] = len(list(folder.glob("*.json"))) if folder.is_dir() else 0
+        log_sizes = {}
+        log_dir = Path("logs")
+        if log_dir.is_dir():
+            for path in sorted(log_dir.glob("*.log")):
+                try:
+                    log_sizes[path.name] = path.stat().st_size
+                except OSError:
+                    pass
+        started = float(metrics.get("started_at") or 0.0)
+        state_doc = {}
+        try:
+            state_doc = await state(request)
+            state_doc = json.loads(state_doc.body.decode("utf-8"))
+        except Exception:  # noqa: BLE001 - dashboard must render even if state fails
+            state_doc = {}
+        return web.json_response({
+            "ok": True,
+            "bot": state_doc.get("bot", {}),
+            "counters": {key: value for key, value in metrics.items() if key != "started_at"},
+            "uptime_s": int(time.time() - started) if started else None,
+            "queues": queue_counts,
+            "logs": log_sizes,
+            "members": member_count,
+            "config": state_doc.get("config", {}),
+        })
     app.router.add_get("/health", health)
     app.router.add_get("/api/state", state)
+    app.router.add_get("/api/dashboard", dashboard)
     app.router.add_get("/api/logs", logs)
     app.router.add_post("/api/config", update_config)
     app.router.add_post("/api/manage", manage)

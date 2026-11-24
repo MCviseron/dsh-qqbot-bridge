@@ -19,6 +19,8 @@ class _RT:
     def get_bool(self, key, default=True):
         if key == "group_at_only":
             return False
+        if key == "interject_hook_only":
+            return False  # 这些用例验证的是判断提示词本身，不走省钱预筛
         return default
 
     def get_int(self, key, default=0):

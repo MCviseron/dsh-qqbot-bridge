@@ -21,9 +21,12 @@ DEFAULTS: Dict[str, Any] = {
     "group_enabled": True,
     # 群聊行为
     "group_full_mode": True,
-    "chatter_batch": 4,
-    "chatter_max_s": 60,
-    "chatter_cooldown_s": 90,
+    "chatter_batch": 8,
+    "chatter_max_s": 120,
+    "chatter_cooldown_s": 45,
+    "interject_hook_only": True,
+    "interject_cold_s": 1200,
+    "send_file_timeout_s": 60,
     "bot_say_memory_s": 300,
     "stuck_turn_s": 180,
     # 发送行为
