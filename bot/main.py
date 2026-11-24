@@ -1401,6 +1401,19 @@ class DSHBot(Client):
         self._pool_sent(target, result, chunk)
         return result
 
+    def _display_name(self, conv_key: str, member_openid: str) -> str:
+        """How the model should see a group member: nickname when known, else 群友+短号."""
+        tail = short_id(member_openid).upper()
+        name = getattr(self, "_member_names", {}).get(conv_key, {}).get(tail, "")
+        if name:
+            return name
+        try:
+            saved = json.loads(MEMBERS_FILE.read_text(encoding="utf-8"))
+            name = str(((saved.get(conv_key) or {}).get(tail) or {}).get("name") or "")
+        except (OSError, ValueError):
+            name = ""
+        return name or ("群友" + tail)
+
     def _remember_member(self, conv_key: str, member_openid: str, nickname: str = "") -> None:
         """Index speakers (tail6 → openid + 昵称) and mirror it to disk for the panel/tools."""
         if not member_openid:
@@ -2824,7 +2837,13 @@ class DSHBot(Client):
             # 双保险：无论污染从哪条路径进来，提示词形状的文本都不许出现在聊天记录里
             if "【闲聊模式】" in body or "【群聊插话判断】" in body:
                 continue
-            who = "你（机器人）" if item.outbound else item.author
+            if item.outbound:
+                who = "你（机器人）"
+            else:
+                # 池里存的是短号，提示词里换成昵称（群友不知道自己的短号）
+                tail = str(item.author or "").upper()
+                openid = self.member_index.get(conv_key, {}).get(tail, "")
+                who = self._display_name(conv_key, openid) if openid else item.author
             lines.append(f"[{time.strftime('%H:%M', time.localtime(item.at))}] {who}: {body}")
         return chr(10).join(lines)
 
@@ -2837,12 +2856,12 @@ class DSHBot(Client):
             return
         transcript = self._pool_transcript(conv_key)
         if transcript.strip() == "":
-            transcript = f"群友{short_id(member_openid)}: {clean_content(getattr(message, 'content', ''))}"
+            transcript = f"{self._display_name(conv_key, member_openid)}: {clean_content(getattr(message, 'content', ''))}"
         try:
             verdict = await self.bridge.judge(conv_key, transcript)
         except BridgeError as error:
             log.warning("plan B judge unavailable (%s); fallback to plain chatter", error)
-            await self._buffer_chatter(conv_key, "群友" + short_id(member_openid), clean_content(getattr(message, "content", "")))
+            await self._buffer_chatter(conv_key, self._display_name(conv_key, member_openid), clean_content(getattr(message, "content", "")))
             await self._maybe_judge(conv_key)
             return
         need_reply = bool(verdict.get("needReply"))
@@ -2863,7 +2882,7 @@ class DSHBot(Client):
         await self._queue_message(
             conv_key,
             prompt,
-            "群友" + short_id(member_openid),
+            self._display_name(conv_key, member_openid),
             False,
             [],
             chat=False,
@@ -3015,7 +3034,7 @@ class DSHBot(Client):
         await self._queue_message(
             conv_key,
             text,
-            "主人" if is_owner else f"群友{short_id(member_openid)}",
+            "主人" if is_owner else self._display_name(conv_key, member_openid),
             is_owner,
             images,
             chat=chat,
@@ -3084,7 +3103,7 @@ class DSHBot(Client):
             if images:
                 self.recent_images[conv_key] = (images[-2:], time.time())
             if text:
-                await self._buffer_chatter(conv_key, "群友" + short_id(member_openid), text)
+                await self._buffer_chatter(conv_key, self._display_name(conv_key, member_openid), text)
                 await self._maybe_judge(conv_key)
         except Exception as error:  # noqa: BLE001
             log.exception("group handler failed: %s", error)
