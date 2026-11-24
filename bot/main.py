@@ -2076,6 +2076,10 @@ class DSHBot(Client):
         if now - float(getattr(self, "_metrics_at", 0.0)) < 3.0:
             return
         self._metrics_at = now
+        self._write_metrics()
+
+    def _write_metrics(self) -> None:
+        """Persist counters/series/timeline; the file's started_at always tracks the live process."""
         try:
             METRICS_FILE.write_text(
                 json.dumps(
@@ -2154,6 +2158,7 @@ class DSHBot(Client):
             self._events = events[-20:]
         if saved.get("scale"):
             self._lifecycle = str(saved.get("scale"))
+        self._write_metrics()  # 启动即刷新 started_at，面板的运行时长不必等第一条消息
 
     def _archive_complete_minutes(self, now: float) -> None:
         """Append each finished minute to a per-day JSONL so history outlives a restart."""

@@ -399,6 +399,8 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
         except Exception:  # noqa: BLE001 - metrics must never break the endpoint
             memory_mb = None
         started = float(metrics.get("started_at") or 0.0)
+        # 运行时长属于进程寿命：优先用监督进程记的子进程启动时间，文件里的 started_at 只作兜底
+        live_uptime = (state_doc.get("bot") or {}).get("uptime_s")
         state_doc = {}
         try:
             state_doc = await state(request)
@@ -409,7 +411,8 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             "ok": True,
             "bot": state_doc.get("bot", {}),
             "counters": {key: value for key, value in metrics.items() if key not in ("started_at", "series")},
-            "uptime_s": int(time.time() - started) if started else None,
+            "uptime_s": int(live_uptime) if isinstance(live_uptime, (int, float)) and live_uptime >= 0
+            else (int(time.time() - started) if started else None),
             "queues": queue_counts,
             "logs": log_sizes,
             "members": member_count,
