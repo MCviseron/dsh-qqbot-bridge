@@ -59,6 +59,7 @@ window.__ModuleLoader__.load({
       memberName: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       memberTail: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
       memberList: { maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 },
+      eventList: { maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 },
       chipRow: { display: "flex", flexWrap: "wrap", gap: 6 },
       chip: { padding: "2px 8px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", fontSize: 11, color: "var(--dsw-alias-label-secondary)" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
@@ -569,16 +570,17 @@ window.__ModuleLoader__.load({
           h("div", { style: T.kpiRow },
             h("div", { style: T.card },
               h("div", { style: T.cardTitle }, "最近事件"),
-              ...(dash.events && dash.events.length
-                ? dash.events.map(function (item, index) {
-                    const when = new Date(Number(item.at) * 1000)
-                    const hhmm = ("0" + when.getHours()).slice(-2) + ":" + ("0" + when.getMinutes()).slice(-2)
-                    return h("div", { key: "ev" + index, style: T.eventRow },
-                      h("span", { style: T.eventTime }, hhmm),
-                      h("span", { style: T.eventKind }, String(item.kind || "")),
-                      h("span", { style: T.eventText }, String(item.text || "")))
-                  })
-                : [h("div", { style: T.hint }, "还没有事件")])),
+              h("div", { style: T.eventList },
+                ...(dash.events && dash.events.length
+                  ? dash.events.map(function (item, index) {
+                      const when = new Date(Number(item.at) * 1000)
+                      const hhmm = ("0" + when.getHours()).slice(-2) + ":" + ("0" + when.getMinutes()).slice(-2)
+                      return h("div", { key: "ev" + index, style: T.eventRow },
+                        h("span", { style: T.eventTime }, hhmm),
+                        h("span", { style: T.eventKind }, String(item.kind || "")),
+                        h("span", { style: T.eventText }, String(item.text || "")))
+                    })
+                  : [h("div", { style: T.hint }, "还没有事件")]))),
             h("div", { style: T.card },
               h("div", { style: T.cardTitle }, "群资料"),
               ...(dash.groups_detail && dash.groups_detail.length
