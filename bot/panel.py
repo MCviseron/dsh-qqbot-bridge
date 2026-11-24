@@ -303,6 +303,40 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
                     log_sizes[path.name] = path.stat().st_size
                 except OSError:
                     pass
+        range_key = str(request.query.get("range") or "hour")
+        metrics_dir = Path("state") / "metrics"
+        history_days = []
+        try:
+            if metrics_dir.is_dir():
+                for path in sorted(metrics_dir.glob("*.jsonl")):
+                    total = 0
+                    minutes = 0
+                    try:
+                        for line in path.read_text(encoding="utf-8").splitlines():
+                            if not line.strip():
+                                continue
+                            row = json.loads(line)
+                            minutes += 1
+                            for key, value in row.items():
+                                if key != "minute":
+                                    total += int(value)
+                    except (OSError, ValueError):
+                        continue
+                    history_days.append({"day": path.stem, "minutes": minutes, "total": total})
+        except OSError:
+            history_days = []
+        file_series = []
+        if range_key in ("today", "7d") and metrics_dir.is_dir():
+            wanted = sorted(metrics_dir.glob("*.jsonl"))[-7:] if range_key == "7d" else sorted(metrics_dir.glob("*.jsonl"))[-1:]
+            for path in wanted:
+                try:
+                    for line in path.read_text(encoding="utf-8").splitlines():
+                        if line.strip():
+                            row = json.loads(line)
+                            file_series.append({"t": int(row.pop("minute")), **{k: int(v) for k, v in row.items()}})
+                except (OSError, ValueError):
+                    continue
+            file_series.sort(key=lambda row: row["t"])
         raw_series = metrics.get("series") or {}
         series = []
         try:
@@ -364,7 +398,9 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             "queues": queue_counts,
             "logs": log_sizes,
             "members": member_count,
-            "series": series,
+            "series": series if range_key == "hour" else file_series[-1440:],
+            "range": range_key,
+            "history": history_days,
             "events": list(reversed((metrics.get("events") or [])[-12:])),
             "runtime": metrics.get("runtime") or {},
             "memory_mb": memory_mb,

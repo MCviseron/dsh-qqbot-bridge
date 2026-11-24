@@ -2025,6 +2025,7 @@ class DSHBot(Client):
             cutoff = now - 180 * 60
             for stale in [key for key in series if key < cutoff]:
                 series.pop(stale, None)
+        self._archive_complete_minutes(now)
         if now - float(getattr(self, "_metrics_at", 0.0)) < 3.0:
             return
         self._metrics_at = now
@@ -2048,6 +2049,35 @@ class DSHBot(Client):
             )
         except OSError:
             pass
+
+    def _archive_complete_minutes(self, now: float) -> None:
+        """Append each finished minute to a per-day JSONL so history outlives a restart."""
+        series = getattr(self, "_series", None)
+        if not series:
+            return
+        written = getattr(self, "_archived", None)
+        if written is None:
+            written = self._archived = set()
+        current = int(now // 60) * 60
+        try:
+            METRICS_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return
+        for bucket in sorted(series):
+            if bucket >= current or bucket in written:
+                continue
+            cell = series[bucket]
+            day = time.strftime("%Y-%m-%d", time.localtime(bucket))
+            line = json.dumps({"minute": int(bucket), **{k: int(v) for k, v in cell.items()}}, ensure_ascii=False)
+            try:
+                with (METRICS_DIR / f"{day}.jsonl").open("a", encoding="utf-8") as handle:
+                    handle.write(line + chr(10))
+            except OSError as error:
+                log.debug("metrics archive failed: %s", error)
+                continue
+            written.add(bucket)
+        if len(written) > 2000:
+            self._archived = set(sorted(written)[-500:])
 
     def _timeline(self, kind: str, text: str) -> None:
         """Last few interesting things, for the dashboard timeline."""
@@ -3240,6 +3270,7 @@ LOG_DIR = ROOT / "logs"
 MEMBERS_FILE = STATE_DIR / "members.json"
 STREAMS_FILE = STATE_DIR / "streams.json"
 METRICS_FILE = STATE_DIR / "metrics.json"
+METRICS_DIR = STATE_DIR / "metrics"
 STOP_FLAG = STATE_DIR / "stop.flag"
 SUPERVISOR_PID = STATE_DIR / "supervisor.pid"
 CHILD_PID = STATE_DIR / "child.pid"

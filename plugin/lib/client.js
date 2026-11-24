@@ -171,6 +171,7 @@ window.__ModuleLoader__.load({
       const [follow, setFollow] = React.useState(true)
       const [tab, setTab] = React.useState("settings")
       const [dash, setDash] = React.useState(null)
+      const [dashRange, setDashRange] = React.useState("hour")
       const [stickers, setStickers] = React.useState([])
       const [stickerNote, setStickerNote] = React.useState("")
       const [stickerDir, setStickerDir] = React.useState("")
@@ -205,7 +206,7 @@ window.__ModuleLoader__.load({
         let stop = false
         const tick = async function () {
           try {
-            const data = await call("/api/dashboard")
+            const data = await call("/api/dashboard?range=" + dashRange)
             if (!stop) setDash(data)
           } catch (error) {
             if (!stop) setDash({ offline: true })
@@ -214,7 +215,7 @@ window.__ModuleLoader__.load({
         tick()
         const timer = setInterval(tick, 5000)
         return function () { stop = true; clearInterval(timer) }
-      }, [tab, call])
+      }, [tab, call, dashRange])
       React.useEffect(function () {
         const timer = setInterval(load, 8000)
         return function () { clearInterval(timer) }
@@ -474,7 +475,15 @@ window.__ModuleLoader__.load({
             kpi("消息总数", totalMsgs, "私聊 " + (c.c2c_msgs || 0) + " · 群 " + (c.group_msgs || 0)),
             kpi("今天已开口", spoke, "共判断 " + judged + " 次"),
             kpi("省下的调用", c.hook_skips || 0, "钩子预筛直接跳过")),
-          chartCard("近 60 分钟活动", [
+          h("div", { style: T.actions },
+            [["hour", "近 60 分钟"], ["today", "今天"], ["7d", "近 7 天"]].map(function (item) {
+              return h("button", {
+                key: item[0],
+                style: dashRange === item[0] ? Object.assign({}, T.tab, T.tabActive) : T.tab,
+                onClick: function () { setDashRange(item[0]) },
+              }, item[1])
+            }),
+            h("span", { style: T.hint }, dashRange === "hour" ? "内存时序，重启清零" : "读取 state/metrics/*.jsonl，停机也留档")),          chartCard(dashRange === "hour" ? "近 60 分钟活动" : dashRange === "today" ? "今天每分钟活动" : "近 7 天每分钟活动", [
             { label: "私聊", color: "#2f6bff" },
             { label: "群聊", color: "#22c55e" },
             { label: "开口", color: "#f59e0b" },
@@ -520,7 +529,16 @@ window.__ModuleLoader__.load({
                       h("span", { style: T.cardValue }, String(dash.members_detail[key]) + " 人"))
                   })
                 : [h("div", { style: T.hint }, "暂无")])),
-          h("div", { style: T.footNote }, "计数从机器人最近一次启动累计；曲线按分钟聚合，保留 3 小时。"))
+          h("div", { style: T.card },
+            h("div", { style: T.cardTitle }, "历史留档（state/metrics）"),
+            ...(dash.history && dash.history.length
+              ? dash.history.slice(-7).reverse().map(function (item) {
+                  return h("div", { key: item.day, style: T.cardRow },
+                    h("span", { style: T.cardKey }, item.day),
+                    h("span", { style: T.cardValue }, item.minutes + " 分钟 · " + item.total + " 次事件"))
+                })
+              : [h("div", { style: T.hint }, "还没有归档文件（每分钟结束后自动写一行 JSONL）")])),
+          h("div", { style: T.footNote }, "计数从机器人最近一次启动累计；近 60 分钟读内存，今天/近 7 天读磁盘归档。"))
       }
       const dot = function (ok) {
         return h("span", { style: Object.assign({}, T.dot, { background: ok === true ? "var(--dsw-alias-state-success-primary, #35c759)" : ok === false ? "var(--dsw-alias-label-error, #e5534b)" : "var(--dsw-alias-label-tertiary, #888)" }) })
