@@ -400,13 +400,13 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             memory_mb = None
         started = float(metrics.get("started_at") or 0.0)
         # 运行时长属于进程寿命：优先用监督进程记的子进程启动时间，文件里的 started_at 只作兜底
-        live_uptime = (state_doc.get("bot") or {}).get("uptime_s")
-        state_doc = {}
         try:
             state_doc = await state(request)
             state_doc = json.loads(state_doc.body.decode("utf-8"))
         except Exception:  # noqa: BLE001 - dashboard must render even if state fails
             state_doc = {}
+        # 运行时长属于进程寿命：优先用监督进程记的子进程启动时间，metrics 里的 started_at 只作兜底
+        live_uptime = (state_doc.get("bot") or {}).get("uptime_s")
         return web.json_response({
             "ok": True,
             "bot": state_doc.get("bot", {}),
