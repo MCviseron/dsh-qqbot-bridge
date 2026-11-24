@@ -3132,6 +3132,7 @@ class DSHBot(Client):
 # process control: run / supervise (auto-restart + panel) / stop
 # --------------------------------------------------------------------------- #
 STATE_DIR = ROOT / "state"
+LOG_DIR = ROOT / "logs"
 MEMBERS_FILE = STATE_DIR / "members.json"
 STREAMS_FILE = STATE_DIR / "streams.json"
 STOP_FLAG = STATE_DIR / "stop.flag"
@@ -3278,7 +3279,7 @@ def run_bot() -> int:
 
     from runtime_config import RuntimeConfig
 
-    configure_logging()
+    configure_logging(log_file=str(LOG_DIR / "viseron_qqbotpy.log"))
     config = load_config()
     runtime = RuntimeConfig()
     overrides = {}
@@ -3304,6 +3305,14 @@ def supervise() -> int:
     from panel import start_panel
     from runtime_config import RuntimeConfig
     from viseron_qqbotpy import load_env
+
+    # 守护进程写自己的日志文件：两个进程同写一个文件会让轮转报 WinError 32，
+    # 日志永远切不开（旧日志会一直涨并淹没真实错误）。
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        configure_logging(log_file=str(LOG_DIR / "supervisor.log"))
+    except Exception as error:  # noqa: BLE001 - logging must never block startup
+        print(f"[supervisor] logging setup failed: {error}", flush=True)
 
     load_env(ROOT / ".env")
     runtime = RuntimeConfig()
