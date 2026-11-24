@@ -589,6 +589,7 @@ class DSHBot(Client):
         self._stream_holdoff: Dict[str, float] = {}
         self._admin_confirm: Dict[str, Dict[str, Any]] = {}
         self.member_index: Dict[str, Dict[str, str]] = {}
+        self._member_names: Dict[str, Dict[str, str]] = {}
         self._token: Tuple[str, float] = ("", 0.0)
 
     # -- lifecycle ---------------------------------------------------------- #
@@ -599,6 +600,7 @@ class DSHBot(Client):
             log.info("[%s] bridge %s (%s)", self.config.botname, health.get("service"), self.config.bridge_url)
         except BridgeError as error:
             log.warning("[%s] bridge unreachable: %s", self.config.botname, error)
+        self._seed_members()  # 成员索引跨重启保留：谁发过言就一直在
         self._seed_metrics()  # 计数跨重启累计，只有「运行时长」归零
         self._bump("c2c_msgs", 0)  # 初始化并落盘计数器，仪表盘开局就有数据
         self._prune_metrics(time.time())  # 启动时清一次超过保留期的归档
@@ -1416,46 +1418,88 @@ class DSHBot(Client):
             name = ""
         return name or ("群友" + tail)
 
+    def _seed_members(self) -> None:
+        """Restore the member index from disk so a restart never forgets who spoke."""
+        try:
+            saved = json.loads(MEMBERS_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if not isinstance(saved, dict):
+            return
+        names = getattr(self, "_member_names", None) or {}
+        restored = 0
+        for conv_key, items in saved.items():
+            if not isinstance(items, dict):
+                continue
+            bucket = self.member_index.setdefault(str(conv_key), {})
+            for tail, info in items.items():
+                if not isinstance(info, dict):
+                    continue
+                openid = str(info.get("openid") or "")
+                if not re.fullmatch(r"[0-9A-Fa-f]{32}", openid):
+                    continue
+                key = str(tail).upper()
+                bucket[key] = openid
+                name = str(info.get("name") or "")
+                if name:
+                    names.setdefault(str(conv_key), {})[key] = name
+                restored += 1
+        self._member_names = names
+        log.info("member index restored: %d members in %d conversation(s)", restored, len(self.member_index))
+
+    def _persist_members(self) -> None:
+        """Merge the in-memory index into state/members.json — every conversation, never just one."""
+        try:
+            saved = json.loads(MEMBERS_FILE.read_text(encoding="utf-8")) if MEMBERS_FILE.exists() else {}
+        except (OSError, ValueError):
+            saved = {}
+        payload: Dict[str, Dict[str, Any]] = {}
+        if isinstance(saved, dict):
+            for conv_key, items in saved.items():
+                if isinstance(items, dict):
+                    payload[str(conv_key)] = {
+                        str(tail).upper(): dict(info)
+                        for tail, info in items.items()
+                        if isinstance(info, dict)
+                    }
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        appid = getattr(self.config, "appid", "")
+        for conv_key, items in self.member_index.items():
+            bucket = payload.setdefault(conv_key, {})
+            for tail, openid in items.items():
+                old = bucket.get(tail) or {}
+                name = (getattr(self, "_member_names", {}).get(conv_key, {}) or {}).get(tail) or old.get("name") or ""
+                bucket[tail] = {
+                    "openid": openid,
+                    "name": name,
+                    "avatar": old.get("avatar")
+                    or (f"https://q.qlogo.cn/qqapp/{appid}/{openid}/640" if appid else ""),
+                    "last_seen": stamp,
+                }
+        try:
+            MEMBERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            MEMBERS_FILE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        except OSError as error:
+            log.warning("member index persist failed: %s", error)
+
     def _remember_member(self, conv_key: str, member_openid: str, nickname: str = "") -> None:
-        """Index speakers (tail6 → openid + 昵称) and mirror it to disk for the panel/tools."""
+        """Index speakers (tail6 -> openid + nickname) and mirror the whole index to disk."""
         if not member_openid:
             return
         if not re.fullmatch(r"[0-9A-Fa-f]{32}", str(member_openid)):
             # 只认真实的 openid：测试桩/脏数据不允许污染 state/members.json
             return
-        index = self.member_index.setdefault(conv_key, {})
         tail = short_id(member_openid).upper()
-        index[tail] = member_openid
+        self.member_index.setdefault(conv_key, {})[tail] = member_openid
+        names = getattr(self, "_member_names", None)
+        if names is None:
+            names = self._member_names = {}
+        bucket = names.setdefault(conv_key, {})
         if nickname:
-            names = getattr(self, "_member_names", None)
-            if names is None:
-                names = self._member_names = {}
-            names.setdefault(conv_key, {})[tail] = str(nickname)[:40]
-        try:
-            MEMBERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            MEMBERS_FILE.write_text(
-                json.dumps(
-                    {
-                        conv_key: {
-                            tail: {
-                                "openid": openid,
-                                "name": getattr(self, "_member_names", {}).get(conv_key, {}).get(tail, ""),
-                                "avatar": (
-                                    f"https://q.qlogo.cn/qqapp/{self.config.appid}/{openid}/640"
-                                    if getattr(self.config, "appid", "")
-                                    else ""
-                                ),
-                                "last_seen": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            }
-                            for tail, openid in self.member_index.get(conv_key, {}).items()
-                        }
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-        except Exception as error:  # noqa: BLE001 - index is best-effort
-            log.warning("member index persist failed: %s", error)
+            bucket[tail] = str(nickname)[:40]
+        elif tail not in bucket:
+            bucket[tail] = ""
+        self._persist_members()
 
     def _readable_at(self, text: str, target: Optional[Target] = None) -> str:
         """Per QQ docs: 群聊 @人用 <qqbot-at-user id="member_openid"/>，仅 markdown 消息支持。"""
