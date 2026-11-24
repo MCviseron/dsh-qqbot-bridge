@@ -28,6 +28,7 @@ DEFAULTS: Dict[str, Any] = {
     "interject_cold_s": 1200,
     "send_file_timeout_s": 60,
     "metrics_keep_days": 30,
+    "admin_owner_window_s": 300,
     "bot_say_memory_s": 300,
     "stuck_turn_s": 180,
     # 发送行为
@@ -135,13 +136,19 @@ class RuntimeConfig:
         try:
             return int(self.get(key))
         except (TypeError, ValueError):
-            return int(DEFAULTS[key])
+            try:
+                return int(DEFAULTS[key])
+            except KeyError:
+                return 0  # 未登记的新键不该把调用方炸掉
 
     def get_float(self, key: str) -> float:
         try:
             return float(self.get(key))
         except (TypeError, ValueError):
-            return float(DEFAULTS[key])
+            try:
+                return float(DEFAULTS[key])
+            except KeyError:
+                return 0.0
 
     def snapshot(self, *, mask_secrets: bool = True) -> Dict[str, Any]:
         self.reload()
