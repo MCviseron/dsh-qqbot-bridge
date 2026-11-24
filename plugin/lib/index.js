@@ -1197,9 +1197,33 @@ export function apply(ctx, rawConfig) {
       },
     ]
 
+    // DSH 拒收非无损 JSON（undefined / NaN / Infinity），工具返回值先过一遍
+    const jsonSafe = (value) => {
+      if (value === null) return null
+      const kind = typeof value
+      if (kind === "undefined" || kind === "function" || kind === "symbol") return undefined
+      if (kind === "number") return Number.isFinite(value) ? value : null
+      if (kind === "bigint") return String(value)
+      if (kind !== "object") return value
+      if (Array.isArray(value)) return value.map((item) => {
+        const clean = jsonSafe(item)
+        return clean === undefined ? null : clean
+      })
+      const out = {}
+      for (const [key, item] of Object.entries(value)) {
+        const clean = jsonSafe(item)
+        if (clean !== undefined) out[key] = clean
+      }
+      return out
+    }
+
     for (const tool of [...infoTools, ...adminTools]) {
       try {
-        tools.register({ ...tool, output: { schema: { type: "object" }, render: (_a, value) => [{ type: "text", text: JSON.stringify(value) }] } })
+        tools.register({
+          ...tool,
+          execute: async (...args) => jsonSafe(await tool.execute(...args)),
+          output: { schema: { type: "object" }, render: (_a, value) => [{ type: "text", text: JSON.stringify(value) }] },
+        })
         log(`${tool.name} tool registered`)
       } catch (error) {
         log(`${tool.name} registration failed: ${error instanceof Error ? error.message : String(error)}`)
