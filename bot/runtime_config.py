@@ -27,6 +27,7 @@ DEFAULTS: Dict[str, Any] = {
     "interject_hook_only": True,
     "interject_cold_s": 1200,
     "send_file_timeout_s": 60,
+    "metrics_keep_days": 30,
     "bot_say_memory_s": 300,
     "stuck_turn_s": 180,
     # 发送行为

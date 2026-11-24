@@ -150,6 +150,8 @@ window.__ModuleLoader__.load({
       ["image_max_mb","图片上限（MB）",1,20], ["rate_limit_per_hour","每会话每小时上限（0=不限）",0,240],
       ["stream_interval_ms","流式节流（毫秒）",50,2000], ["quote_context_chars","引用原文上限（字）",50,2000],
       ["pool_ttl_s","消息池保留（秒）",60,86400], ["pool_max","消息池上限（条）",10,1000],
+      ["metrics_keep_days","仪表盘数据保留（天）",1,365], ["interject_cold_s","冷场判定（秒，超过则有钩子）",60,7200],
+      ["send_file_timeout_s","发文件超时（秒）",10,300], ["stream_retry_s","流式降级后暂停（秒）",10,3600],
     ]
 
     const TEXTS = [

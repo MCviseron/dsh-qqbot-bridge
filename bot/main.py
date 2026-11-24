@@ -587,6 +587,7 @@ class DSHBot(Client):
         except BridgeError as error:
             log.warning("[%s] bridge unreachable: %s", self.config.botname, error)
         self._bump("c2c_msgs", 0)  # 初始化并落盘计数器，仪表盘开局就有数据
+        self._prune_metrics(time.time())  # 启动时清一次超过保留期的归档
         await self._sync_panels()
         # 严格闭合：重启后先把上个进程遗留的流式会话关掉，再开始新回合
         try:
@@ -2078,6 +2079,38 @@ class DSHBot(Client):
             written.add(bucket)
         if len(written) > 2000:
             self._archived = set(sorted(written)[-500:])
+        self._prune_metrics(now)
+
+    def _prune_metrics(self, now: float) -> None:
+        """Keep at most metrics_keep_days of archive; prune once per day."""
+        keep_days = max(1, self.rt_int("metrics_keep_days", 30))
+        last = float(getattr(self, "_pruned_at", 0.0))
+        if now - last < 3600:
+            return
+        self._pruned_at = now
+        cutoff = now - keep_days * 86400
+        removed = 0
+        try:
+            for path in METRICS_DIR.glob("*.jsonl"):
+                try:
+                    day_start = time.mktime(time.strptime(path.stem, "%Y-%m-%d"))
+                except ValueError:
+                    continue
+                if day_start < cutoff:
+                    path.unlink(missing_ok=True)
+                    removed += 1
+            for path in LOG_DIR.glob("*.log.*"):
+                try:
+                    if path.stat().st_mtime < cutoff:
+                        path.unlink(missing_ok=True)
+                        removed += 1
+                except OSError:
+                    continue
+        except OSError as error:
+            log.debug("metrics prune failed: %s", error)
+            return
+        if removed:
+            log.info("pruned %d old metric/log file(s) (keep %d days)", removed, keep_days)
 
     def _timeline(self, kind: str, text: str) -> None:
         """Last few interesting things, for the dashboard timeline."""
