@@ -1591,6 +1591,10 @@ class DSHBot(Client):
 
     def resolve_sticker(self, name: str) -> Optional[str]:
         wanted = name.strip().lower()
+        for suffix in (".png", ".gif", ".jpg", ".jpeg", ".webp"):
+            if wanted.endswith(suffix):
+                wanted = wanted[: -len(suffix)]
+                break
         for stem in self.sticker_names():
             if stem.lower() == wanted:
                 for suffix in (".png", ".gif", ".jpg", ".jpeg", ".webp"):
@@ -1713,7 +1717,7 @@ class DSHBot(Client):
             for name in stickers:
                 resolved = self.resolve_sticker(name)
                 if resolved is None:
-                    log.warning("unknown sticker %r (have %s)", name, ",".join(self.sticker_names()[:8]))
+                    log.warning("unknown sticker %r (have %s)", name, ",".join(self.sticker_names()))
                     problems.append(f"表情包「{name}」不存在")
                     continue
                 if target is not None:
@@ -1990,7 +1994,12 @@ class DSHBot(Client):
             images = recent[0]
         stickers = self.sticker_names()
         if stickers and text.strip():
-            text = text + "\n（想发个表情包时，单独一行写 [[sticker: 名字]]，可选：" + ",".join(stickers[:12]) + "）"
+            # 全量列出：截断会让模型"看不见"新加的表情包，只能反复发它知道的那几个
+            shown = stickers[:60]
+            hint = ",".join(shown)
+            if len(stickers) > len(shown):
+                hint += f"…（共 {len(stickers)} 个）"
+            text = text + "\n（想发个表情包时，单独一行写 [[sticker: 名字]]，可选：" + hint + "）"
         if chat and text.strip():
             # 长度与"别复述过程"由插件侧的群聊指令负责，这里只补一条不重复的话
             text = "【闲聊模式】不要调用工具。" + chr(10) + text
