@@ -1,4 +1,6 @@
 """Offline check: queued messages are drained and the in-flight counter never leaks."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio, dataclasses, sys
 from pathlib import Path
 sys.path.insert(0, str(Path('.').resolve()))

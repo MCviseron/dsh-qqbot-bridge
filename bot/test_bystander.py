@@ -1,4 +1,6 @@
 """Judge prompt must tell the model whether it is a bystander or the addressee."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio
 import sys
 import time

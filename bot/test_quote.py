@@ -1,4 +1,6 @@
 """Quote recognition: platform msg_elements + msg_idx pool fallback (offline)."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio
 import dataclasses
 import os

@@ -2217,6 +2217,10 @@ class DSHBot(Client):
                         result = {"status": "done", "ok": False, "error": "unknown action"}
                         try:
                             action = str(payload.get("action") or "")
+                            if action in ("group", "muted", "member", "stats"):
+                                result = await self._info_action(action, payload)
+                                path.write_text(json.dumps({**payload, **result}, ensure_ascii=False), encoding="utf-8")
+                                continue
                             allowed, why = self._admin_allowed(payload)
                             if not allowed:
                                 log.warning("admin %s refused: %s", action, why)
@@ -2787,6 +2791,96 @@ class DSHBot(Client):
                 await self._group_name(group_openid)
             except Exception as error:  # noqa: BLE001 - cosmetics only
                 log.debug("group profile prefetch failed: %s", error)
+
+    async def _info_action(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Read-only lookups for the model's tools (no owner gate needed)."""
+        group = str(payload.get("group") or "")
+        if action == "group":
+            info: Dict[str, Any] = {}
+            try:
+                info = await self.api.get_group_info(group_openid=group)
+                self._save_group_profile(group, info or {})
+            except Exception as error:  # noqa: BLE001 - fall back to the cached profile
+                log.info("group info lookup failed: %s", error)
+            mute_rule = {}
+            try:
+                mute_rule = await self.api.get_group_restrict_chat_setting(group_openid=group)
+            except Exception as error:  # noqa: BLE001 - optional detail
+                log.info("group mute rule lookup failed: %s", error)
+            saved = {}
+            try:
+                all_groups = json.loads(GROUPS_FILE.read_text(encoding="utf-8")) if GROUPS_FILE.exists() else {}
+                saved = all_groups.get(group, {}) if isinstance(all_groups, dict) else {}
+            except (OSError, ValueError):
+                saved = {}
+            return {
+                "status": "done",
+                "ok": bool(info or saved),
+                "group": {
+                    "openid": group,
+                    "name": (info or {}).get("group_name") or saved.get("name") or "",
+                    "memo": (info or {}).get("group_finger_memo") or saved.get("memo") or "",
+                    "class": (info or {}).get("group_class_text") or saved.get("class") or "",
+                    "tags": (info or {}).get("group_tags") or saved.get("tags") or [],
+                    "members": (info or {}).get("group_member_num") or saved.get("members") or 0,
+                },
+                "mute_rule": mute_rule,
+                "known_members": len(self.member_index.get(f"group:{group}", {})),
+            }
+        if action == "muted":
+            try:
+                state = await self.api.get_group_restrict_chat_setting(group_openid=group)
+            except Exception as error:  # noqa: BLE001 - report the platform message
+                return {"status": "done", "ok": False, "error": str(error)}
+            members = []
+            for item in state.get("members") or []:
+                openid = str(item.get("member_openid") or "")
+                members.append({
+                    "name": item.get("username") or self._display_name(f"group:{group}", openid),
+                    "openid": openid,
+                    "short": short_id(openid).upper(),
+                    "expire_at": item.get("mute_expire_at") or "",
+                })
+            return {"status": "done", "ok": True, "muted": members, "count": len(members)}
+        if action == "member":
+            member = str(payload.get("member") or "")
+            conv = f"group:{group}"
+            name = self._display_name(conv, member)
+            entry: Dict[str, Any] = {}
+            try:
+                known = json.loads(MEMBERS_FILE.read_text(encoding="utf-8")) if MEMBERS_FILE.exists() else {}
+                entry = ((known or {}).get(conv) or {}).get(short_id(member).upper(), {})
+            except (OSError, ValueError):
+                entry = {}
+            muted = None
+            try:
+                state = await self.api.get_group_restrict_chat_setting(group_openid=group)
+                for item in state.get("members") or []:
+                    if str(item.get("member_openid")) == member:
+                        muted = item.get("mute_expire_at") or ""
+            except Exception:  # noqa: BLE001 - optional
+                muted = None
+            return {
+                "status": "done",
+                "ok": True,
+                "member": {
+                    "name": name,
+                    "openid": member,
+                    "short": short_id(member).upper(),
+                    "avatar": entry.get("avatar") or f"https://q.qlogo.cn/qqapp/{self.config.appid}/{member}/640",
+                    "last_seen": entry.get("last_seen") or "",
+                    "muted_until": muted,
+                },
+            }
+        if action == "stats":
+            metrics = {}
+            try:
+                metrics = json.loads(METRICS_FILE.read_text(encoding="utf-8")) if METRICS_FILE.exists() else {}
+            except (OSError, ValueError):
+                metrics = {}
+            counters = {key: int(metrics.get(key, 0) or 0) for key in self.METRIC_KEYS}
+            return {"status": "done", "ok": True, "counters": counters, "events": (metrics.get("events") or [])[-5:]}
+        return {"status": "done", "ok": False, "error": f"unknown info action: {action}"}
 
     def _save_group_profile(self, group_openid: str, info: Dict[str, Any]) -> None:
         """Keep the last known profile per group so the panel needs no API call."""
@@ -3495,7 +3589,7 @@ class DSHBot(Client):
 # --------------------------------------------------------------------------- #
 # process control: run / supervise (auto-restart + panel) / stop
 # --------------------------------------------------------------------------- #
-STATE_DIR = ROOT / "state"
+STATE_DIR = Path(os.environ.get("DSH_QQBOT_STATE_DIR") or (ROOT / "state"))
 LOG_DIR = ROOT / "logs"
 MEMBERS_FILE = STATE_DIR / "members.json"
 STREAMS_FILE = STATE_DIR / "streams.json"

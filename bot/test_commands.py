@@ -1,4 +1,6 @@
 """Offline check of the command paths in main.py (no gateway, no DSH)."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio
 import sys
 from pathlib import Path

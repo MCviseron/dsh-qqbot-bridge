@@ -1,4 +1,6 @@
 """Turn-id based dedupe: a streamed turn must not eat the next answer."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio, dataclasses, sys
 from pathlib import Path
 sys.path.insert(0, str(Path('.').resolve()))

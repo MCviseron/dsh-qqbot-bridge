@@ -1144,7 +1144,60 @@ export function apply(ctx, rawConfig) {
       },
     ]
 
-    for (const tool of adminTools) {
+    const infoTools = [
+      {
+        name: "qq_group",
+        description: "查看当前群资料：群名、群简介、分类、标签、成员数，以及全群禁言规则。",
+        parameters: { type: "object", properties: { convKey: { type: "string", description: "会话键，如 group:XXXX" } } },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const result = await adminCall({ action: "group", convKey, group })
+          return { ok: result.ok === true, group: result.group, mute_rule: result.mute_rule, known_members: result.known_members, error: result.error }
+        },
+      },
+      {
+        name: "qq_muted",
+        description: "列出本群当前被禁言的成员（名字、openid、短号、到期时间）。",
+        parameters: { type: "object", properties: { convKey: { type: "string", description: "会话键，如 group:XXXX" } } },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const result = await adminCall({ action: "muted", convKey, group })
+          return { ok: result.ok === true, count: result.count || 0, muted: result.muted || [], error: result.error }
+        },
+      },
+      {
+        name: "qq_member",
+        description: "查看某个群成员的资料：昵称、头像地址、openid、短号、最后发言时间、是否被禁言。member 可传短号/昵称/openid。",
+        parameters: {
+          type: "object",
+          properties: {
+            convKey: { type: "string", description: "会话键，如 group:XXXX" },
+            member: { type: "string", description: "短号、昵称或 openid" },
+          },
+        },
+        async execute(args) {
+          const convKey = String(args?.convKey || "")
+          const openid = resolveMember(convKey, args?.member)
+          if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
+          const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
+          const result = await adminCall({ action: "member", convKey, group, member: openid })
+          return { ok: result.ok === true, member: result.member, error: result.error }
+        },
+      },
+      {
+        name: "qq_stats",
+        description: "查看机器人统计：私聊/群聊消息数、插话判断与开口次数、流式次数、文件发送、审批、提问、禁言踢人次数、最近事件。",
+        parameters: { type: "object", properties: {} },
+        async execute() {
+          const result = await adminCall({ action: "stats" })
+          return { ok: result.ok === true, counters: result.counters, events: result.events, error: result.error }
+        },
+      },
+    ]
+
+    for (const tool of [...infoTools, ...adminTools]) {
       try {
         tools.register({ ...tool, output: { schema: { type: "object" }, render: (_a, value) => [{ type: "text", text: JSON.stringify(value) }] } })
         log(`${tool.name} tool registered`)

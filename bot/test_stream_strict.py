@@ -1,3 +1,5 @@
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio, json, sys, pathlib, tempfile
 sys.path.insert(0, '.')
 import main

@@ -1,4 +1,6 @@
 """Offline check of the streaming delivery path (no QQ, no DSH)."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio, dataclasses, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path('.').resolve()))

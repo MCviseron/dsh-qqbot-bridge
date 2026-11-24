@@ -1,4 +1,6 @@
 """Plan B: independent judge decides, main model gets the verbatim pool."""
+import os as _os, tempfile as _tempfile
+_os.environ.setdefault("DSH_QQBOT_STATE_DIR", _tempfile.mkdtemp(prefix="qqbot-test-"))
 import asyncio
 import dataclasses
 import sys

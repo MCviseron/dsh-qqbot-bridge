@@ -134,8 +134,17 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
             except (OSError, ValueError):
                 known = {}
             return web.json_response({"ok": True, "members": known})
-        if action not in ("mute", "kick", "members", "mute_state"):
-            return web.json_response({"ok": False, "error": "action must be mute/kick/members"}, status=400)
+        if action == "groups":
+            try:
+                profiles = json.loads((Path("state") / "groups.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                profiles = {}
+            return web.json_response({"ok": True, "groups": profiles})
+        if action not in ("mute", "kick", "members", "mute_state", "group", "muted", "member", "stats"):
+            return web.json_response(
+                {"ok": False, "error": "action must be one of mute/kick/members/mute_state/group/muted/member/stats"},
+                status=400,
+            )
         request_id = str((body or {}).get("id") or uuid.uuid4())
         outbox = Path("state") / "admin"
         outbox.mkdir(parents=True, exist_ok=True)
@@ -153,21 +162,11 @@ def build_app(control: Any, runtime: RuntimeConfig, token: str) -> web.Applicati
                 return web.json_response(
                     {"ok": True, "pending": True, "error": None, "hint": "已发送私聊二次确认，等你点头才执行"}
                 )
-            if done.get("status") == "waiting":
-                # 踢人需要主人在私聊里二次确认：立刻回话，不等 15 秒
-                return web.json_response(
-                    {"ok": True, "pending": True, "error": None, "hint": "已发送私聊二次确认，等你点头才执行"}
-                )
             if done.get("status") == "done":
                 target.unlink(missing_ok=True)
-                return web.json_response({
-                    "ok": bool(done.get("ok")),
-                    "error": done.get("error"),
-                    "seconds": done.get("seconds"),
-                    "members": done.get("members"),
-                    "state": done.get("state"),
-                    "op": done.get("op"),
-                })
+                payload = {key: value for key, value in done.items() if key not in ("status", "_path")}
+                payload["ok"] = bool(done.get("ok"))
+                return web.json_response(payload)
         return web.json_response({"ok": False, "error": "机器人没响应（可能没在运行）"}, status=504)
     async def open_folder(request: web.Request) -> web.Response:
         """Open a workspace folder in Explorer (local convenience only)."""
