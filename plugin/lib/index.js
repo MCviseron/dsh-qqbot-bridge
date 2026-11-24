@@ -1129,6 +1129,16 @@ export function apply(ctx, rawConfig) {
           if (openid === undefined) return { ok: false, error: "找不到这个成员，先调用 qq_members 看短号" }
           const group = convKey.startsWith("group:") ? convKey.slice(6) : convKey
           const result = await adminCall({ action: "kick", convKey, group, member: openid, blacklist: args?.blacklist === true })
+          if (result.pending === true) {
+            // 还没执行：明确告诉模型"等待确认"，不要说已经踢了
+            return {
+              ok: false,
+              pending: true,
+              member: args?.member,
+              error: null,
+              hint: result.hint || "已发送私聊二次确认，等主人点头后才执行；现在还没有踢人",
+            }
+          }
           return { ok: result.ok === true, member: args?.member, error: result.error }
         },
       },

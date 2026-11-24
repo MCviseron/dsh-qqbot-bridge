@@ -2235,9 +2235,16 @@ class DSHBot(Client):
                                 request_id = str(payload.get("id") or "")
                                 payload["_path"] = str(path)
                                 self._admin_confirm[request_id] = dict(payload)
+                                target_group = str(payload.get("group") or "")
+                                target_member = str(payload.get("member") or "")
+                                who = self._display_name(f"group:{target_group}", target_member)
                                 await self.send_text(
                                     self._owner_conv(),
-                                    "⚠ 请求踢人：群 …" + str(payload.get("group"))[-6:] + " / 成员 " + str(payload.get("member"))[-6:],
+                                    "⚠ 请求踢人" + chr(10)
+                                    + "群：…" + target_group[-6:] + chr(10)
+                                    + "成员：" + who
+                                    + ("" if not who.startswith("群友") else "（昵称未知，这是短号）") + chr(10)
+                                    + "点下面的按钮确认，取消则不动。",
                                     keyboard=kick_confirm_keyboard(request_id),
                                 )
                                 path.write_text(
@@ -2669,10 +2676,11 @@ class DSHBot(Client):
             return
         group = str(payload.get("group") or "")
         member = str(payload.get("member") or "")
+        who = self._display_name(f"group:{group}", member)
         result_path = str(payload.pop("_path", "") or "")
         ok, failure = False, None
         if not approved:
-            await self.send_text(self._owner_conv(), "已取消：没有踢出 " + member[-6:])
+            await self.send_text(self._owner_conv(), "已取消：没有踢出 " + who)
             failure = "cancelled by owner"
         else:
             try:
@@ -2680,7 +2688,7 @@ class DSHBot(Client):
                     group_openid=group, member_openids=[member], add_to_member_blacklist=bool(payload.get("blacklist"))
                 )
                 ok = True
-                await self.send_text(self._owner_conv(), "✅ 已踢出 " + member[-6:])
+                await self.send_text(self._owner_conv(), "✅ 已踢出 " + who)
             except Exception as error:  # noqa: BLE001 - report platform refusal to the owner
                 failure = str(error)
                 await self.send_text(self._owner_conv(), f"❌ 踢人失败：{failure}")
@@ -3209,10 +3217,6 @@ class DSHBot(Client):
         text = clean_content(message.content)
         self._pool_incoming(message, "c2c", user_openid, conv_key, f"用户{short_id(user_openid)}")
         lowered = text.lower()
-        kick_hit = parse_kick_confirm(text)
-        if kick_hit is not None:
-            await self._resolve_kick_confirm(interaction, *kick_hit)
-            return
         decision, approval_id = parse_decision(text)
         if decision is not None:
             if not is_owner:
@@ -3357,6 +3361,11 @@ class DSHBot(Client):
             except Exception as error:  # noqa: BLE001 - the question may have expired
                 log.warning("answer delivery failed: %s", error)
                 await self.send_text(conv_for_answer, "这个提问已经失效了（或插件还没重启加载 /answer）。")
+            return
+        # 踢人二次确认：data 形如「踢人确认 <id> yes」/「踢人确认 <id> no」
+        kick_hit = parse_kick_confirm(str(button_data))
+        if kick_hit is not None:
+            await self._resolve_kick_confirm(interaction, *kick_hit)
             return
         decision, approval_id = parse_decision(str(button_data))
         if decision is None:
