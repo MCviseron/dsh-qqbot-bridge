@@ -599,6 +599,7 @@ class DSHBot(Client):
             log.info("[%s] bridge %s (%s)", self.config.botname, health.get("service"), self.config.bridge_url)
         except BridgeError as error:
             log.warning("[%s] bridge unreachable: %s", self.config.botname, error)
+        self._seed_metrics()  # 计数跨重启累计，只有「运行时长」归零
         self._bump("c2c_msgs", 0)  # 初始化并落盘计数器，仪表盘开局就有数据
         self._prune_metrics(time.time())  # 启动时清一次超过保留期的归档
         await self._sync_panels()
@@ -2094,6 +2095,20 @@ class DSHBot(Client):
             )
         except OSError:
             pass
+
+    def _seed_metrics(self) -> None:
+        """Counters survive restarts; only uptime restarts at zero."""
+        try:
+            saved = json.loads(METRICS_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            saved = {}
+        self._metrics = {key: int(saved.get(key, 0) or 0) for key in self.METRIC_KEYS}
+        self._metrics_at = 0.0
+        events = saved.get("events")
+        if isinstance(events, list):
+            self._events = events[-20:]
+        if saved.get("scale"):
+            self._lifecycle = str(saved.get("scale"))
 
     def _archive_complete_minutes(self, now: float) -> None:
         """Append each finished minute to a per-day JSONL so history outlives a restart."""

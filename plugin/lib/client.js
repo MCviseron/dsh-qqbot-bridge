@@ -454,6 +454,13 @@ window.__ModuleLoader__.load({
         const uptime = Number(dash.uptime_s || 0)
         const human = uptime > 0 ? Math.floor(uptime / 3600) + "h " + Math.floor((uptime % 3600) / 60) + "m" : "—"
         const points = buildSeries(dash.series, ["c2c_msgs", "group_msgs", "judge_spoke", "streams"], CHART_BUCKETS)
+        const sumKey = function (key) {
+          return (points || []).reduce(function (acc, point) { return acc + Number(point[key] || 0) }, 0)
+        }
+        const rangeC2c = sumKey("c2c_msgs")
+        const rangeGroup = sumKey("group_msgs")
+        const rangeSpoke = sumKey("judge_spoke")
+        const rangeStreams = sumKey("streams")
         const totalMsgs = (c.c2c_msgs || 0) + (c.group_msgs || 0)
         const judged = c.judge_calls || 0
         const spoke = c.judge_spoke || 0
@@ -478,9 +485,14 @@ window.__ModuleLoader__.load({
         return h("div", { style: { display: "grid", gap: 14 } },
           h("div", { style: T.kpiRow },
             kpi("运行时长", human, (botInfo.online ? "在线" : "离线") + " · pid " + (botInfo.pid || "—")),
-            kpi("消息总数", totalMsgs, "私聊 " + (c.c2c_msgs || 0) + " · 群 " + (c.group_msgs || 0)),
-            kpi("今天已开口", spoke, "共判断 " + judged + " 次"),
-            kpi("省下的调用", c.hook_skips || 0, "钩子预筛直接跳过")),
+            kpi("消息（本区间）", rangeC2c + rangeGroup, "私聊 " + rangeC2c + " · 群 " + rangeGroup),
+            kpi("开口（本区间）", rangeSpoke, "累计 " + spoke + " 次 · 判断 " + judged),
+            kpi("流式（本区间）", rangeStreams, "累计 " + streamed + " 次 · 降级 " + fallbacks)),
+          h("div", { style: T.kpiRow },
+            kpi("累计消息", totalMsgs, "自首次运行起，重启不清零"),
+            kpi("累计开口", spoke, "共判断 " + judged + " 次"),
+            kpi("省下的调用", c.hook_skips || 0, "钩子预筛直接跳过"),
+            kpi("内存/错误", (dash.memory_mb ? dash.memory_mb + " MB" : "—") + " / " + (dash.errors || 0), "工作集 / 日志 ERROR 数")),
           h("div", { style: T.actions },
             [["hour", "近 60 分钟"], ["today", "今天"], ["7d", "近 7 天"]].map(function (item) {
               return h("button", {
@@ -499,7 +511,7 @@ window.__ModuleLoader__.load({
           })),
           h("div", { style: T.kpiRow },
             h("div", { style: T.card }, ring(speakRate, "开口率", spoke + " / " + judged + " 次判断", "#f59e0b")),
-            h("div", { style: T.card }, ring(streamOk, "流式成功率", streamed + " 次 · 降级 " + fallbacks, "#a855f7")),
+            h("div", { style: T.card }, ring(streamed > 0 ? streamOk : 0, streamed > 0 ? "流式成功率" : "流式（暂无数据）", streamed + " 次 · 降级 " + fallbacks, "#a855f7")),
             h("div", { style: Object.assign({}, T.card, { gridColumn: "span 2" }) },
               h("div", { style: T.cardTitle }, "动作分布"),
               ...actions.map(function (item) { return barRow(item[0], item[1], actionMax, item[2]) }))),
