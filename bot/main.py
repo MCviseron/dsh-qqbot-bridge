@@ -2097,14 +2097,58 @@ class DSHBot(Client):
         except OSError:
             pass
 
+    def _read_recent_archive(self, now: float, window_s: float = 180 * 60) -> Dict[int, Dict[str, int]]:
+        """Finished minutes from the per-day JSONL files inside the window."""
+        rows: Dict[int, Dict[str, int]] = {}
+        for offset in (0, 1):  # 跨零点时补上前一天
+            day = time.strftime("%Y-%m-%d", time.localtime(now - offset * 86400))
+            path = METRICS_DIR / f"{day}.jsonl"
+            if not path.exists():
+                continue
+            try:
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    bucket = int(row.pop("minute"))
+                    if now - bucket > window_s:
+                        continue
+                    rows[bucket] = {key: int(value) for key, value in row.items()}
+            except (OSError, ValueError) as error:
+                log.debug("metrics archive read failed (%s): %s", day, error)
+        return rows
+
     def _seed_metrics(self) -> None:
-        """Counters survive restarts; only uptime restarts at zero."""
+        """Everything except uptime is time-based: counters, per-minute series and the timeline all survive a restart."""
         try:
             saved = json.loads(METRICS_FILE.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             saved = {}
-        self._metrics = {key: int(saved.get(key, 0) or 0) for key in self.METRIC_KEYS}
+        now = time.time()
+        archived = self._read_recent_archive(now)
+        totals: Dict[str, int] = {key: 0 for key in self.METRIC_KEYS}
+        for cell in archived.values():
+            for key, value in cell.items():
+                if key in totals:
+                    totals[key] += value
+        # metrics.json 是绝对总数，JSONL 是逐分钟明细；取较大值，免得被节流丢掉的最后几秒把总数拉低
+        self._metrics = {
+            key: max(int(saved.get(key, 0) or 0), totals.get(key, 0)) for key in self.METRIC_KEYS
+        }
         self._metrics_at = 0.0
+        series: Dict[int, Dict[str, int]] = dict(archived)
+        saved_series = saved.get("series")
+        if isinstance(saved_series, dict):
+            for bucket, cell in saved_series.items():
+                try:
+                    key = int(bucket)
+                except (TypeError, ValueError):
+                    continue
+                if now - key > 180 * 60 or not isinstance(cell, dict):
+                    continue
+                series.setdefault(key, {name: int(value) for name, value in cell.items()})
+        self._series = series
+        self._archived = set(archived)
         events = saved.get("events")
         if isinstance(events, list):
             self._events = events[-20:]
