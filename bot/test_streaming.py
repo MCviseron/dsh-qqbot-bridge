@@ -119,6 +119,8 @@ async def main():
     conv = target(bot)
     bot.api.fail = True
     await bot._handle_stream({"convKey": conv, "text": "失败测试", "final": True})
+    # 流式被拒、且没送出任何内容时必须清理状态且不抑制 durable 回复，
+    # 否则整段回答会被"静默丢失"（这是之前私聊没反应的那一类 bug）
     ok4 = conv not in bot._streams and conv not in bot._suppress_reply
     print(("ok   " if ok4 else "FAIL ") + "流式失败 -> 清理状态，回落到一次性发送")
     failures += 0 if ok4 else 1

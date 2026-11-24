@@ -570,6 +570,8 @@ class DSHBot(Client):
         self._chat_turns: Dict[str, bool] = {}
         self._bg_tasks: set = set()
         self._owner_recent: Dict[str, float] = {}
+        self._stream_locks: Dict[str, asyncio.Lock] = {}
+        self._stream_holdoff: Dict[str, float] = {}
         self._admin_confirm: Dict[str, Dict[str, Any]] = {}
         self.member_index: Dict[str, Dict[str, str]] = {}
         self._token: Tuple[str, float] = ("", 0.0)
@@ -583,6 +585,11 @@ class DSHBot(Client):
         except BridgeError as error:
             log.warning("[%s] bridge unreachable: %s", self.config.botname, error)
         await self._sync_panels()
+        # 严格闭合：重启后先把上个进程遗留的流式会话关掉，再开始新回合
+        try:
+            await self._close_stale_streams()
+        except Exception as error:  # noqa: BLE001 - must never block startup
+            log.warning("stale stream cleanup failed: %s", error)
         _heartbeat()
         if self._pull_task is None or self._pull_task.done():
             self._pull_task = asyncio.create_task(self._pull_loop())
@@ -1498,9 +1505,40 @@ class DSHBot(Client):
                         return str(candidate)
         return None
 
+    def _persist_streams(self) -> None:
+        """Remember open streams across restarts so a new process can close them."""
+        try:
+            payload = {
+                conv: {k: s.get(k) for k in ("index", "msg_seq", "event_id", "stream_msg_id", "text")}
+                for conv, s in self._streams.items()
+                if s.get("stream_msg_id")
+            }
+            STREAMS_FILE.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        except OSError as error:
+            log.debug("stream state persist failed: %s", error)
+
+    async def _close_stale_streams(self) -> None:
+        """严格闭合：上个进程留下的流必须先关掉，否则新流会撞上“其它流式消息发送中”。"""
+        try:
+            stale = json.loads(STREAMS_FILE.read_text(encoding="utf-8")) if STREAMS_FILE.exists() else {}
+        except (OSError, ValueError):
+            stale = {}
+        for conv_key, saved in list(stale.items()):
+            if conv_key in self._streams or not saved.get("stream_msg_id"):
+                continue
+            self._streams[conv_key] = {**saved, "sent_text": saved.get("text", ""), "sent": 0, "last": 0.0, "turn_id": ""}
+            log.info("closing stale stream left by a previous process (%s)", conv_key)
+            await self._finish_stream(conv_key)
+        if STREAMS_FILE.exists():
+            try:
+                STREAMS_FILE.unlink()
+            except OSError:
+                pass
+
     async def _finish_stream(self, conv_key: str) -> None:
         """Close an open streaming message so media never truncates it mid-frame."""
         state = self._streams.pop(conv_key, None)
+        self._persist_streams()
         if state is None or int(state.get("index", 0)) == 0:
             return
         target = self.targets.get(conv_key) or self._target_from_key(conv_key)
@@ -1528,6 +1566,7 @@ class DSHBot(Client):
         finally:
             if previous:
                 http.base_url = previous
+            self._persist_streams()
 
     async def _send_file(self, target: Target, path: str) -> bool:
         """Upload one local file into the conversation as a QQ media message."""
@@ -2158,6 +2197,13 @@ class DSHBot(Client):
             # Turn bookkeeping happens on every path: a suppressed reply used to
             # leak the in-flight counter, so later messages queued forever.
             self._inflight[conv_key] = max(0, self._inflight.get(conv_key, 1) - 1)
+            if conv_key in self._streams:
+                # 回合结束了但流还开着（final 事件丢失/异常路径）：这里必须闭合，
+                # 否则下一个回合会撞上"其它流式消息发送中"。
+                try:
+                    await self._close_stream(conv_key)
+                except Exception as error:  # noqa: BLE001 - sealing is best effort
+                    log.warning("stream seal on turn end failed: %s", error)
             started = self._submitted_at.pop(conv_key, None)
             turn_id = str(event.get("turnId") or "")
             duplicated = False
@@ -2211,14 +2257,92 @@ class DSHBot(Client):
             await self.send_text(str(event.get("target") or conv_key), str(event.get("text") or ""))
             return
 
-    async def _handle_stream(self, event: Dict[str, Any]) -> None:
-        """Progressive C2C delivery of one answer.
+    def _stream_degraded(self, conv_key: str) -> bool:
+        until = getattr(self, "_stream_holdoff", {}).get(conv_key, 0.0)
+        return until > time.time()
 
-        stream_mode="api": the platform stream_messages endpoint (official
-        contract: input_mode/input_state/content_raw/msg_seq/index/
-        stream_msg_id). stream_mode="messages": the answer is split into a few
-        sentence-sized messages with a short delay - visible "typing" that works
-        even when the API rejects the stream (which it does for this bot).
+    def _hold_stream(self, conv_key: str, why: str) -> None:
+        if not hasattr(self, "_stream_holdoff"):
+            self._stream_holdoff = {}
+        hold = self.rt_float("stream_retry_s", 120)
+        self._stream_holdoff[conv_key] = time.time() + hold
+        log.warning("streaming suspended in %s for %.0fs: %s", conv_key, hold, why)
+
+    def _new_stream_state(self, conv_key: str, target: Target, turn_id: str) -> Dict[str, Any]:
+        self._msg_seq += 1
+        return {
+            "index": 0,
+            "text": "",
+            "sent_text": "",
+            "last": 0.0,
+            "msg_seq": self._msg_seq,
+            "event_id": target.last_msg_id or "",
+            "stream_msg_id": "",
+            "turn_id": turn_id,
+        }
+
+    async def _stream_post(self, target: Target, state: Dict[str, Any], done: bool) -> bool:
+        """One frame. index is allocated strictly increasing, only after a success."""
+        body = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip()
+        if not body:
+            return True
+        payload: Dict[str, Any] = {
+            "input_mode": "replace",
+            "input_state": 10 if done else 1,
+            "content_type": "markdown",
+            "content_raw": body,
+            "event_id": state["event_id"],
+            "msg_seq": int(state["msg_seq"]),
+            "index": int(state["index"]),
+        }
+        if target.last_msg_id:
+            payload["msg_id"] = target.last_msg_id
+        if state.get("stream_msg_id"):
+            payload["stream_msg_id"] = state["stream_msg_id"]
+        http = getattr(self.api, "_http", None)
+        previous = getattr(http, "base_url", None)
+        try:
+            if previous:
+                # stream_messages lives on the sgroup host; the SDK default
+                # (api.bot.qq.com) answers 50015001 "系统繁忙" for it.
+                http.base_url = SG_GROUP_BASE_URL
+            response = await self.api.post_c2c_stream_message(openid=target.openid, **payload)
+        except Exception as error:  # noqa: BLE001 - a refused frame must never lose the answer
+            message = str(error)
+            log.warning("stream frame failed (%s): %s", type(error).__name__, message)
+            if "其它流式消息发送中" in message or "引导已经结束" in message:
+                self._hold_stream(target.conv_key, "platform reports another open stream")
+            return False
+        finally:
+            if previous:
+                http.base_url = previous
+        if isinstance(response, dict) and response.get("id") and not state.get("stream_msg_id"):
+            state["stream_msg_id"] = response["id"]
+        state["index"] = int(state["index"]) + 1
+        state["sent_text"] = state["text"]
+        state["last"] = time.time()
+        self._persist_streams()
+        return True
+
+    async def _close_stream(self, conv_key: str) -> bool:
+        """Strictly seal the open stream: exactly one final frame, then forget it."""
+        state = self._streams.pop(conv_key, None)
+        self._persist_streams()
+        if state is None or not state.get("stream_msg_id"):
+            return True
+        target = self.targets.get(conv_key) or self._target_from_key(conv_key)
+        if target is None:
+            return True
+        return await self._stream_post(target, state, True)
+
+    async def _handle_stream(self, event: Dict[str, Any]) -> None:
+        """Progressive C2C delivery with a strict one-open-stream contract.
+
+        The platform allows a single open stream per user, requires index to
+        increase per frame, and refuses anything after input_state 10. So: one
+        session per turn, frames serialised per conversation, a guaranteed seal
+        on the final event, and a plain-message fallback when the platform
+        refuses - never a silently lost answer.
         """
         conv_key = str(event.get("convKey") or "")
         target = self.targets.get(conv_key) or self._target_from_key(conv_key)
@@ -2228,115 +2352,62 @@ class DSHBot(Client):
             return
         final = bool(event.get("final"))
         delta = str(event.get("text") or "")
-        state = self._streams.get(conv_key)
-        if state is None:
-            state = {
-                "index": 0,
-                "text": "",
-                "sent_text": "",
-                "sent": 0,
-                "last": 0.0,
-                "chunks": 0,
-                "msg_seq": self._msg_seq + 1,
-                "event_id": target.last_msg_id or "",
-                "stream_msg_id": "",
-                "turn_id": str(event.get("turnId") or ""),
-            }
-            self._msg_seq += 1
-            self._streams[conv_key] = state
-        if delta:
-            # The final stream event repeats text that was already streamed as a
-            # delta; appending it again is what showed every short reply twice.
-            if final and state["text"].endswith(delta):
-                pass
-            else:
-                state["text"] += delta
-
-        if not str(state["text"]).strip():
-            if final:
-                self._streams.pop(conv_key, None)
-            return
-
-        # Inline directives ([[send_file: ...]], [[sticker: ...]]) are executed by
-        # the durable reply path only; streaming would show them as literal text.
-        # 不要再因为出现 [[send_file]] 就中断流式：中断会把已发出的半句留在客户端
-        # （表现为「抱歉」「如果」这种碎片 + 后面又一条完整消息），
-        # 正确做法是把标记从帧内容里剥掉，流照常走完，收尾后再发文件。
-
-        async def send_frame(done: bool) -> bool:
-            if state["sent_text"] == state["text"]:
-                # Nothing new since the previous frame. QQ appends instead of
-                # honouring input_mode=replace for C2C streams, so re-sending the
-                # same text shows the whole reply twice.
-                state["last"] = time.time()
-                return True
-            payload: Dict[str, Any] = {
-                "input_mode": "replace",
-                "input_state": 10 if done else 1,
-                "content_type": "markdown",
-                # 标记不进入正文：QQ 侧不应该看到 [[send_file: …]]
-                "content_raw": STICKER_MARK.sub("", SEND_FILE_MARK.sub("", state["text"])),
-                "event_id": state["event_id"],
-                "msg_seq": state["msg_seq"],
-                "index": int(state["index"]),
-            }
-            if target.last_msg_id:
-                payload["msg_id"] = target.last_msg_id
-            if state["stream_msg_id"]:
-                payload["stream_msg_id"] = state["stream_msg_id"]
-            http = getattr(self.api, "_http", None)
-            previous = getattr(http, "base_url", None)
-            try:
-                if previous:
-                    # stream_messages lives on the sgroup host; the SDK default
-                    # (api.bot.qq.com) answers 50015001 "系统繁忙" for it.
-                    http.base_url = SG_GROUP_BASE_URL
-                response = await self.api.post_c2c_stream_message(openid=target.openid, **payload)
-            except Exception as error:  # noqa: BLE001 - degrade instead of losing the answer
-                log.warning("stream frame failed (%s): %s", type(error).__name__, error)
-                return False
-            finally:
-                if previous:
-                    http.base_url = previous
-            if isinstance(response, dict) and response.get("id") and not state["stream_msg_id"]:
-                state["stream_msg_id"] = response["id"]
-            state["index"] = int(state["index"]) + 1
-            state["sent_text"] = state["text"]
-            state["last"] = time.time()
-            return True
-
-        interval = self.rt_float("stream_interval_ms", 300) / 1000.0
-        if not final and time.time() - float(state["last"]) < interval:
-            return
-        if int(state["index"]) == 0:
-            if not await send_frame(False):
-                self._streams.pop(conv_key, None)
+        if not hasattr(self, "_stream_locks"):
+            self._stream_locks = {}
+        lock = self._stream_locks.setdefault(conv_key, asyncio.Lock())
+        async with lock:
+            if self._stream_degraded(conv_key):
+                if final and delta.strip():
+                    await self.send_text(conv_key, STICKER_MARK.sub("", SEND_FILE_MARK.sub("", delta)).strip())
+                    self._spawn_files(conv_key, delta)
                 return
-        if final:
-            ok = await send_frame(True)
-            state = self._streams.pop(conv_key, None) or state
-            if ok:
-                self._spawn_files(conv_key, str(state.get("text") or ""))
-                if state.get("turn_id"):
-                    self._streamed_turns[str(state["turn_id"])] = time.time()
-                    if len(self._streamed_turns) > 50:
-                        for stale in sorted(self._streamed_turns, key=self._streamed_turns.get)[:10]:
-                            self._streamed_turns.pop(stale, None)
-                else:
-                    self._suppress_reply.add(conv_key)
-                log.info("stream finished (%d chars, %d frame(s)) for %s", len(state["text"]), state["index"], conv_key)
-            else:
-                # 流式被平台拒（"其它流式消息发送中"/"引导已结束"/index 冲突）时，
-                # 绝不能把整段回答丢掉——退回普通消息，保证 QQ 一定收到。
-                fallback = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip()
-                if fallback:
-                    log.warning("stream unusable for %s; falling back to a plain message", conv_key)
-                    await self.send_text(conv_key, fallback)
-                    self._streamed_turns[str(state.get("turn_id") or "")] = time.time()
-            return
-        if int(state["index"]) >= 1:
-            await send_frame(False)
-
+            state = self._streams.get(conv_key)
+            if state is None:
+                state = self._new_stream_state(conv_key, target, str(event.get("turnId") or ""))
+                self._streams[conv_key] = state
+            if delta:
+                # The final event repeats text already streamed as deltas.
+                if not (final and state["text"].endswith(delta)):
+                    state["text"] += delta
+            if not str(state["text"]).strip():
+                if final:
+                    self._streams.pop(conv_key, None)
+                    self._persist_streams()
+                return
+            if final:
+                ok = await self._close_stream(conv_key)
+                fallback_sent = False
+                if not ok:
+                    fallback = STICKER_MARK.sub("", SEND_FILE_MARK.sub("", str(state.get("text") or ""))).strip()
+                    if fallback and int(state.get("index", 0)) > 0:
+                        log.warning("stream unusable for %s; falling back to a plain message", conv_key)
+                        await self.send_text(conv_key, fallback)
+                        fallback_sent = True
+                # delivered 决定要不要抑制 durable 回复：什么都没送出去时必须让它照常发，
+                # 否则这条回答就凭空消失了。
+                delivered = int(state.get("index", 0)) > 0 or fallback_sent
+                if delivered:
+                    self._spawn_files(conv_key, str(state.get("text") or ""))
+                    if state.get("turn_id"):
+                        self._streamed_turns[str(state["turn_id"])] = time.time()
+                        if len(self._streamed_turns) > 50:
+                            for stale in sorted(self._streamed_turns, key=self._streamed_turns.get)[:10]:
+                                self._streamed_turns.pop(stale, None)
+                    else:
+                        self._suppress_reply.add(conv_key)
+                if ok:
+                    log.info("stream finished (%d chars, %d frame(s)) for %s", len(state["text"]), state["index"], conv_key)
+                return
+            interval = self.rt_float("stream_interval_ms", 300) / 1000.0
+            if time.time() - float(state["last"]) < interval:
+                return
+            if state["sent_text"] == state["text"]:
+                return
+            if not await self._stream_post(target, state, False):
+                # A refused frame makes the session untrustworthy: drop it and let
+                # the durable reply carry the answer as one plain message.
+                self._streams.pop(conv_key, None)
+                self._persist_streams()
     async def _deliver_approval(self, event: Dict[str, Any]) -> None:
         """Send the approval card (buttons + fallback text) to the owner chat."""
         approval_id = str(event.get("approvalId") or "")
@@ -3062,6 +3133,7 @@ class DSHBot(Client):
 # --------------------------------------------------------------------------- #
 STATE_DIR = ROOT / "state"
 MEMBERS_FILE = STATE_DIR / "members.json"
+STREAMS_FILE = STATE_DIR / "streams.json"
 STOP_FLAG = STATE_DIR / "stop.flag"
 SUPERVISOR_PID = STATE_DIR / "supervisor.pid"
 CHILD_PID = STATE_DIR / "child.pid"

@@ -48,6 +48,7 @@ DEFAULTS: Dict[str, Any] = {
     # 审批决定后重发“已处理”卡片（关掉则只发一行文字确认）
     "approval_inline_redraw": True,
     "kick_confirm": True,
+    "stream_retry_s": 120,
     # 自动分组：每个 QQ 会话一个独立工作区
     "auto_group": True,
     "auto_group_root": "D:\\dsh-qqbot-temp",
