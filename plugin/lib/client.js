@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
       legendDot: { width: 8, height: 8, borderRadius: 999, display: "inline-block" },
       ringBox: { display: "grid", justifyItems: "center", gap: 4 },
       ringLabel: { fontSize: 13, fontWeight: 600, color: "var(--dsw-alias-label-primary)" },
-      barRow: { display: "grid", gridTemplateColumns: "42px 1fr 34px", alignItems: "center", gap: 8, fontSize: 12 },
+      barRow: { display: "grid", gridTemplateColumns: "minmax(64px,auto) 1fr 34px", alignItems: "center", gap: 8, fontSize: 12, whiteSpace: "nowrap" },
       barLabel: { color: "var(--dsw-alias-label-tertiary)" },
       barTrack: { height: 8, borderRadius: 999, background: "var(--dsw-alias-border-l2, rgba(255,255,255,0.12))", overflow: "hidden" },
       barFill: { height: "100%", borderRadius: 999 },
