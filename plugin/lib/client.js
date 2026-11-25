@@ -58,8 +58,8 @@ window.__ModuleLoader__.load({
       memberAvatar: { width: 24, height: 24, borderRadius: 999, objectFit: "cover", display: "inline-block" },
       memberName: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       memberTail: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
-      memberList: { maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 },
-      eventList: { maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 },
+      memberList: { maxHeight: 240, overflowY: "scroll", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 },
+      eventList: { maxHeight: 200, overflowY: "scroll", display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 },
       chipRow: { display: "flex", flexWrap: "wrap", gap: 6 },
       chip: { padding: "2px 8px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", fontSize: 11, color: "var(--dsw-alias-label-secondary)" },
       card: { display: "grid", gap: 8, padding: "14px 16px", borderRadius: 12, border: "1px solid var(--dsw-alias-border-l2)", background: "var(--dsw-alias-bg-layer-1, rgba(255,255,255,0.04))" },
@@ -250,7 +250,8 @@ window.__ModuleLoader__.load({
       }, [call, paused])
 
       if (state !== null && state.offline) {
-        return h("div", { style: T.page }, h("div", { style: T.inner },
+        return h("div", { style: T.page },
+          h("div", { style: T.inner },
           h("div", { style: T.title }, "机器人的设置服务没有运行"),
           h("div", { style: T.hint }, "用 bot\\run-bot.bat 启动一次（或 python -u main.py --supervise），再点重试。"),
           h("div", { style: T.actions }, h("button", { style: T.btn, onClick: load }, "重试"))))
@@ -279,6 +280,13 @@ window.__ModuleLoader__.load({
         catch (error) { setMessage("操作失败") }
         setBusy(false)
       }
+
+      const SCROLLBAR_CSS = [
+        '[data-qq-scroll]::-webkit-scrollbar{width:9px;height:9px}',
+        '[data-qq-scroll]::-webkit-scrollbar-track{background:rgba(0,0,0,0.04);border-radius:999px}',
+        '[data-qq-scroll]::-webkit-scrollbar-thumb{background:rgba(120,130,145,0.55);border-radius:999px;border:2px solid transparent;background-clip:padding-box}',
+        '[data-qq-scroll]::-webkit-scrollbar-thumb:hover{background:rgba(120,130,145,0.8);background-clip:padding-box}',
+      ].join('')
 
       function bucketPlan(range) {
         const now = Math.floor(Date.now() / 1000)
@@ -644,7 +652,7 @@ window.__ModuleLoader__.load({
           h("div", { style: T.kpiRow },
             h("div", { style: T.card },
               h("div", { style: T.cardTitle }, "最近事件"),
-              h("div", { style: T.eventList },
+              h("div", { style: T.eventList, "data-qq-scroll": "1" },
                 ...(dash.events && dash.events.length
                   ? dash.events.map(function (item, index) {
                       const when = new Date(Number(item.at) * 1000)
@@ -686,7 +694,7 @@ window.__ModuleLoader__.load({
                     const groupName = (dash.group_names || {})[key.replace("group:", "")] || ""
                     const list = dash.members_detail[key] || []
                     const rows = [h("div", { key: key, style: T.footNote }, groupName ? groupName + " · " + key.replace("group:", "").slice(-8) : key.replace("group:", "").slice(-8))]
-                    rows.push(h("div", { key: key + "-list", style: T.memberList },
+                    rows.push(h("div", { key: key + "-list", style: T.memberList, "data-qq-scroll": "1" },
                       ...(list.length
                         ? list.map(function (item) {
                             return h("div", { key: key + item.tail, style: T.memberRow },
@@ -697,6 +705,9 @@ window.__ModuleLoader__.load({
                               h("span", { style: T.memberTail }, item.name ? item.tail : ""))
                           })
                         : [h("div", { key: key + "-empty", style: T.hint }, "暂无")])))
+                    if (list.length > 7) {
+                      rows.push(h("div", { key: key + "-more", style: T.footNote }, "共 " + list.length + " 人 · 上下滚动查看全部"))
+                    }
                     return rows
                   })
                 : [h("div", { style: T.hint }, "暂无")])),
@@ -721,13 +732,14 @@ window.__ModuleLoader__.load({
         h("button", { style: tab === "stickers" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("stickers") } }, "表情包"))
 
       if (tab === "dashboard") {
-        return h("div", { style: T.page }, h("div", { style: T.inner }, tabBar, dashboardView()))
+        return h("div", { style: T.page }, h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS), h("div", { style: T.inner }, tabBar, dashboardView()))
       }
       if (tab === "stickers") {
-        return h("div", { style: T.page }, h("div", { style: T.inner }, tabBar, stickersView()))
+        return h("div", { style: T.page }, h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS), h("div", { style: T.inner }, tabBar, stickersView()))
       }
 
       return h("div", { style: T.page },
+        h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS),
         h("div", { style: T.inner },
           tabBar,
           h("div", { style: T.actions },
