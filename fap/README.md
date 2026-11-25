@@ -10,7 +10,7 @@
 | 版本 | 启动方式 | 适用 |
 |---|---|---|
 | **非 GUI（本项目用法）** | `python -m framework.cli --no-gui` | 服务器 / 后台常驻，不装 aiohttp 也能跑 |
-| **GUI（应用套壳）** | 双击 `start-gui.bat` | 原生桌面窗口，7 个页面：仪表盘 / 设置（AppID、AppSecret、白名单…）/ 插件（命令·设置·页面子页）/ 命令 / 事件 / 日志 / 插件页面 |
+| **GUI（应用套壳）** | 双击 `start-gui.bat` | 用系统 Edge/Chrome 的 app 模式开无地址栏窗口（关窗即退出），里面是控制台：仪表盘 / 设置（AppID、AppSecret、白名单…）/ 插件（命令·设置·页面子页）/ 命令 / 事件 / 日志 / 插件页面 |
 | **GUI（浏览器版）** | `start-web-console.bat` / `--gui --web-console` | 同一个控制台的网页形态（http://127.0.0.1:39080/） |
 
 两个版本共用同一份 `framework/` 与同一批插件；GUI 只是额外加载 `framework/gui/`。

@@ -6,214 +6,632 @@
 <title>fap 控制台</title>
 <style>
 :root{
-  --bg:var(--dsw-alias-bg-base,#f6f7f9);--layer:#fff;--line:#e3e6ea;
-  --text:#1b1d21;--muted:#7b828c;--accent:#2f6bff;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;
+  --bg:#f5f6f8; --bg-alt:#eceef2; --panel:#ffffff; --panel-2:#fbfbfd;
+  --line:#e4e7ee; --line-strong:#d5dae4; --text:#111827; --muted:#6b7280; --muted-2:#9aa3b2;
+  --accent:#3b5bfd; --accent-soft:#eef1ff; --ok:#12a150; --ok-soft:#e8f7ee;
+  --warn:#b45309; --warn-soft:#fdf3e3; --bad:#dc2626; --bad-soft:#fdecec;
+  --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px -12px rgba(16,24,40,.18);
+  --radius:14px; --radius-sm:10px;
 }
 @media (prefers-color-scheme: dark){
-  :root{--bg:#14161a;--layer:#1c1f25;--line:#2a2f37;--text:#e8eaed;--muted:#98a0aa;}
+  :root{
+    --bg:#0d1016; --bg-alt:#12161e; --panel:#161b24; --panel-2:#1b212b;
+    --line:#232a35; --line-strong:#2f3846; --text:#e6e9ef; --muted:#98a2b3; --muted-2:#6b7684;
+    --accent:#7c93ff; --accent-soft:#1b2440; --ok:#4ade80; --ok-soft:#12291d;
+    --warn:#fbbf24; --warn-soft:#2a2110; --bad:#f87171; --bad-soft:#2b1414;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.8);
+  }
 }
 *{box-sizing:border-box}
-body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
-header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--layer);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted)}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
-.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
-main{display:grid;grid-template-columns:190px 1fr;gap:16px;padding:16px;max-width:1180px;margin:0 auto}
-nav{display:flex;flex-direction:column;gap:4px}
-nav button{text-align:left;padding:9px 12px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--text);cursor:pointer;font:inherit}
-nav button:hover{background:var(--layer)}
-nav button.active{background:var(--layer);border-color:var(--line);font-weight:600}
-section{display:none}
-section.active{display:block}
-.card{background:var(--layer);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
-.card h2{margin:0 0 10px;font-size:13px;font-weight:600}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.kpi .k{font-size:12px;color:var(--muted)}
-.kpi .v{font-size:20px;font-weight:600;margin-top:2px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
-th{color:var(--muted);font-weight:500;font-size:12px}
-code{background:rgba(127,127,127,.12);padding:1px 5px;border-radius:4px;font-size:12px}
-button.act{padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--layer);color:var(--text);cursor:pointer;font-size:12px}
-button.act:hover{border-color:var(--accent);color:var(--accent)}
-button.act.warn:hover{border-color:var(--bad);color:var(--bad)}
-.tag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
-.events{max-height:420px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px}
-.events div{padding:3px 0;border-bottom:1px dashed var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-pre{max-height:420px;overflow:auto;font-size:12px;background:rgba(127,127,127,.08);padding:10px;border-radius:8px}
-.hint{color:var(--muted);font-size:12px}
-input.search{width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--layer);color:var(--text);font:inherit;margin-bottom:10px}
+html,body{height:100%;overflow:hidden}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:13.5px/1.55 -apple-system,"Segoe UI Variable Text","Segoe UI",system-ui,"Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+.app{display:grid;grid-template-columns:224px 1fr;height:100dvh;overflow:hidden}
+
+/* ---------- 侧栏 ---------- */
+.side{
+  background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:16px 12px;gap:4px;
+  height:100dvh;overflow-y:auto;position:sticky;top:0;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
+.brand .logo{
+  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(140deg,var(--accent),#8b5cf6);color:#fff;font-weight:700;font-size:15px;
+}
+.brand .name{font-weight:650;letter-spacing:.2px}
+.brand .ver{color:var(--muted-2);font-size:11.5px}
+.nav-btn{
+  display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:var(--radius-sm);
+  background:transparent;color:var(--muted);cursor:pointer;text-align:left;transition:background .15s,color .15s;
+}
+.nav-btn:hover{background:var(--bg-alt);color:var(--text)}
+.nav-btn.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav-btn svg{width:16px;height:16px;flex:none;opacity:.9}
+.side-foot{margin-top:auto;padding:10px 8px 2px;border-top:1px solid var(--line);color:var(--muted-2);font-size:11.5px}
+.side-foot b{color:var(--text);font-weight:600}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--muted-2);margin-right:6px}
+.dot.on{background:var(--ok)} .dot.off{background:var(--muted-2)}
+
+/* ---------- 主区 ---------- */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100dvh;overflow:hidden}
+.top{
+  display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--panel) 86%,transparent);backdrop-filter:blur(8px);position:sticky;top:0;z-index:3;
+}
+.top h1{font-size:16px;margin:0;font-weight:650}
+.top .sub{color:var(--muted);font-size:12px}
+.spacer{flex:1}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--line);background:var(--panel-2);color:var(--muted);font-size:12px;white-space:nowrap;
+}
+.pill b{color:var(--text);font-weight:600}
+.content{flex:1;min-height:0;padding:20px 22px 48px;overflow-y:auto;overscroll-behavior:contain}
+.page{display:none} .page.active{display:block}
+.grid{display:grid;gap:14px}
+.cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:16px;
+}
+.card h2{margin:0 0 12px;font-size:12.5px;font-weight:650;color:var(--muted);letter-spacing:.3px;text-transform:none}
+.kpi{display:flex;flex-direction:column;gap:4px}
+.kpi .k{color:var(--muted);font-size:12px}
+.kpi .v{font-size:24px;font-weight:680;letter-spacing:-.02em}
+.kpi .v small{font-size:12px;color:var(--muted-2);font-weight:500;margin-left:4px}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row > .card{flex:1 1 320px;min-width:280px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{
+  text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;letter-spacing:.02em;
+  padding:0 10px 8px;border-bottom:1px solid var(--line);
+}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--panel-2)}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:12px}
+.chip{
+  display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11.5px;
+  background:var(--bg-alt);color:var(--muted);border:1px solid var(--line);
+}
+.chip.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.chip.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chip.accent{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;cursor:pointer;
+  border:1px solid var(--line-strong);background:var(--panel);color:var(--text);transition:.15s;
+}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.05);color:#fff}
+.btn.ghost{border-color:transparent;background:var(--bg-alt)}
+.btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+input[type=text],input[type=password],input[type=number],select{
+  padding:7px 10px;border-radius:10px;border:1px solid var(--line-strong);background:var(--panel);min-width:0;
+}
+input:focus,select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.field{display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)}
+.field:last-child{border-bottom:0}
+.field .label{color:var(--text);font-size:12.5px}
+.field .help{grid-column:2;color:var(--muted-2);font-size:11.5px;margin-top:-4px}
+.field .ctl{display:flex;align-items:center;gap:8px}
+.switch{position:relative;width:40px;height:22px;border-radius:999px;background:var(--line-strong);cursor:pointer;transition:.15s}
+.switch.on{background:var(--accent)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
+.switch.on::after{left:20px}
+.pre{
+  background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px;
+  max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5;
+}
+.stream{max-height:460px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.stream div{padding:5px 8px;border-bottom:1px dashed var(--line);display:flex;gap:10px}
+.stream .t{color:var(--muted-2);flex:none}
+.stream .e{color:var(--accent);flex:none;min-width:120px}
+.stream .m{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chart{display:flex;align-items:flex-end;gap:3px;height:96px;padding-top:6px}
+.chart .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px}
+.chart .b1{background:var(--accent);border-radius:2px 2px 0 0;min-height:1px}
+.chart .b2{background:color-mix(in srgb,var(--accent) 35%,transparent);border-radius:2px 2px 0 0;min-height:1px}
+.chart-legend{display:flex;gap:14px;color:var(--muted);font-size:11.5px;margin-top:6px}
+.legend-dot{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:5px}
+.empty{color:var(--muted-2);padding:18px 4px;text-align:center;font-size:12.5px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.tab{padding:8px 12px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-radius:9px 9px 0 0}
+.tab.active{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.split{display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start}
+.list{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--panel)}
+.list button{
+  display:block;width:100%;text-align:left;padding:10px 12px;border:0;background:transparent;cursor:pointer;
+  border-bottom:1px solid var(--line);color:var(--text);
+}
+.list button:last-child{border-bottom:0}
+.list button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.list .meta{color:var(--muted-2);font-size:11.5px}
+.toast{
+  position:fixed;right:20px;bottom:20px;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:12px;
+  font-size:12.5px;box-shadow:var(--shadow);opacity:0;transform:translateY(6px);transition:.2s;pointer-events:none;z-index:9;
+}
+.toast.show{opacity:1;transform:none}
+.issue{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:12.5px;border-bottom:1px dashed var(--line)}
+.issue:last-child{border-bottom:0}
+.issue .lv{flex:none;width:44px}
 </style>
 </head>
 <body>
-<header>
-  <h1>fap 控制台</h1>
-  <span class="pill"><span class="dot" id="dotBot"></span><span id="botState">连接中…</span></span>
-  <span class="pill" id="verPill">v-</span>
-  <span class="pill" id="upPill">uptime -</span>
-  <span class="pill" id="ownerPill">主人 -</span>
-  <span class="pill" id="plugPill">插件 -</span>
-</header>
-<main>
-  <nav>
-    <button data-tab="overview" class="active">概览</button>
-    <button data-tab="plugins">插件</button>
-    <button data-tab="commands">命令</button>
-    <button data-tab="events">事件</button>
-    <button data-tab="settings">设置 / 日志</button>
-  </nav>
-  <div>
-    <section id="overview" class="active">
-      <div class="card"><h2>机器人</h2><div class="grid" id="kpis"></div></div>
-      <div class="card"><h2>运行中的定时任务</h2><table><thead><tr><th>任务</th><th>执行次数</th><th>错误</th></tr></thead><tbody id="jobs"></tbody></table></div>
-      <div class="card"><h2>插件页面</h2><div id="pages" class="hint">（没有插件注册页面）</div></div>
-    </section>
-
-    <section id="plugins">
-      <div class="card"><h2>插件（可热重载 / 启停）</h2>
-        <table><thead><tr><th>id</th><th>名称</th><th>版本</th><th>命令</th><th>状态</th><th>操作</th></tr></thead><tbody id="pluginRows"></tbody></table>
-        <p class="hint">热操作直接作用于当前进程；重启后按 config.json 的 enabled_plugins（空=全部）重新装配。</p>
-      </div>
-    </section>
-
-    <section id="commands">
-      <div class="card"><h2>命令表</h2><input class="search" id="cmdSearch" placeholder="搜索命令 / 插件 / 说明">
-        <table><thead><tr><th>命令</th><th>别名</th><th>说明</th><th>范围</th><th>插件</th></tr></thead><tbody id="cmdRows"></tbody></table>
-      </div>
-    </section>
-
-    <section id="events">
-      <div class="card"><h2>事件流（框架内部 EventBus，最近 120 条）</h2><div class="events" id="eventRows"></div></div>
-    </section>
-
-    <section id="settings">
-      <div class="card"><h2>配置快照（密钥已打码）</h2><pre id="cfgBox">读取中…</pre></div>
-      <div class="card"><h2>日志尾部</h2><pre id="logBox">读取中…</pre></div>
-    </section>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">f</div>
+      <div><div class="name">fap</div><div class="ver" id="brandVer">frame + plugin</div></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="side-foot" id="sideFoot">启动中…</div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div><h1 id="pageTitle">仪表盘</h1><div class="sub" id="pageSub"></div></div>
+      <div class="spacer"></div>
+      <div class="pill" id="pillConn"><span class="dot off"></span><span>连接中</span></div>
+      <div class="pill" id="pillUp">uptime —</div>
+      <div class="pill" id="pillPlugins">插件 —</div>
+    </header>
+    <div class="content" id="content"></div>
   </div>
-</main>
+</div>
+<div class="toast" id="toast"></div>
 <script>
 var TOKEN = new URLSearchParams(location.search).get("token") || "";
-function api(path, options){
-  var url = path + (TOKEN ? (path.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : "");
-  return fetch(url, options || {}).then(function(r){ return r.json(); });
+var state = { page: "dashboard", plugins: [], commands: [], lastSeq: 0, pluginId: null, pluginTab: "commands", settingsDirty: false, eventPaused: false, eventFilter: "" };
+
+function qs(path){ return path + (TOKEN ? ((path.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN)) : ""); }
+function api(path, options){ return fetch(qs(path), options || {}).then(function(r){ return r.json(); }); }
+function h(tag, props, kids){
+  var node = document.createElement(tag);
+  props = props || {};
+  Object.keys(props).forEach(function(key){
+    if (key === "class") node.className = props[key];
+    else if (key === "text") node.textContent = props[key];
+    else if (key === "html") node.innerHTML = props[key];
+    else if (key.slice(0,2) === "on") node.addEventListener(key.slice(2).toLowerCase(), props[key]);
+    else if (props[key] !== null && props[key] !== undefined) node.setAttribute(key, props[key]);
+  });
+  (kids || []).forEach(function(kid){ if (kid) node.appendChild(typeof kid === "string" ? document.createTextNode(kid) : kid); });
+  return node;
 }
-function el(id){ return document.getElementById(id); }
-function esc(text){ return String(text == null ? "" : text).replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
-function fmtUptime(s){ s = Math.max(0, Math.floor(s || 0)); if (s < 60) return s + " 秒"; if (s < 3600) return Math.floor(s/60) + " 分"; return Math.floor(s/3600) + " 时 " + Math.floor((s%3600)/60) + " 分"; }
-
-var state = { plugins: [], commands: [], lastSeq: 0, filter: "" };
-
-function renderStatus(st){
-  el("dotBot").className = "dot " + (st.connected ? "ok" : "bad");
-  el("botState").textContent = (st.connected ? "QQ 已连接" : "QQ 未连接") + (st.uptime_s > 0 ? "" : " · 未启动");
-  el("verPill").textContent = "v" + st.version + (st.gui ? " · GUI" : " · 无界面");
-  el("upPill").textContent = "uptime " + fmtUptime(st.uptime_s);
-  el("ownerPill").textContent = "主人 " + (st.owner || "-");
-  el("plugPill").textContent = "插件 " + (st.plugins || []).filter(function(p){ return p.loaded; }).length + "/" + (st.plugins || []).length;
-  var kpis = [
-    ["收到消息", st.stats.in], ["发出回复", st.stats.out],
-    ["命令执行", st.stats.commands], ["错误", st.stats.errors],
-    ["命令总数", st.commands], ["定时任务", (st.jobs||[]).length]
-  ];
-  el("kpis").innerHTML = kpis.map(function(row){
-    return '<div class="kpi"><div class="k">' + esc(row[0]) + '</div><div class="v">' + esc(row[1]) + '</div></div>';
-  }).join("");
-  el("jobs").innerHTML = (st.jobs || []).map(function(job){
-    return "<tr><td><code>" + esc(job.name) + "</code></td><td>" + esc(job.runs) + "</td><td>" + esc(job.errors) + "</td></tr>";
-  }).join("") || '<tr><td colspan="3" class="hint">没有定时任务</td></tr>';
-  var pages = st.pages || [];
-  el("pages").innerHTML = pages.length ? pages.map(function(p){
-    return '<a href="/api/pages/' + encodeURIComponent(p.key) + (TOKEN ? "?token=" + encodeURIComponent(TOKEN) : "") + '" target="_blank">' + esc(p.title) + '</a>';
-  }).join(" · ") : "（没有插件注册页面）";
+function clear(node){ while (node.firstChild) node.removeChild(node.firstChild); return node; }
+function toast(message){
+  var box = document.getElementById("toast");
+  box.textContent = message; box.className = "toast show";
+  setTimeout(function(){ box.className = "toast"; }, 1800);
+}
+function fmtUptime(seconds){
+  var s = Math.max(0, Math.floor(seconds || 0));
+  if (s < 60) return s + " 秒";
+  if (s < 3600) return Math.floor(s / 60) + " 分";
+  if (s < 86400) return Math.floor(s / 3600) + " 时 " + Math.floor((s % 3600) / 60) + " 分";
+  return Math.floor(s / 86400) + " 天";
+}
+function card(title, kids){
+  return h("div", {class:"card"}, [title ? h("h2", {text:title}) : null].concat(kids));
+}
+function kpi(label, value, note){
+  return h("div", {class:"card kpi"}, [h("div", {class:"k", text:label}),
+    h("div", {class:"v"}, [String(value), note ? h("small", {text:note}) : null])]);
+}
+function table(headers, rows, emptyText){
+  if (!rows.length) return h("div", {class:"empty", text:emptyText || "没有数据"});
+  var head = h("thead", {}, [h("tr", {}, headers.map(function(name){ return h("th", {text:name}); }))]);
+  var body = h("tbody", {}, rows.map(function(cells){
+    return h("tr", {}, cells.map(function(cell){ return h("td", {}, [typeof cell === "string" ? cell : cell]); }));
+  }));
+  return h("table", {}, [head, body]);
 }
 
-function renderPlugins(rows){
-  state.plugins = rows;
-  el("pluginRows").innerHTML = rows.map(function(p){
-    var actions = p.loaded
-      ? '<button class="act" data-act="reload" data-id="' + esc(p.id) + '">重载</button> <button class="act warn" data-act="disable" data-id="' + esc(p.id) + '">卸载</button>'
-      : '<button class="act" data-act="enable" data-id="' + esc(p.id) + '">加载</button>';
-    return "<tr><td><code>" + esc(p.id) + "</code></td><td>" + esc(p.name) + "</td><td>" + esc(p.version) +
-      "</td><td>" + esc(p.commands) + "</td><td>" + (p.loaded ? "✅ 已加载" : "— 未加载") + "</td><td>" + actions + "</td></tr>";
-  }).join("");
-  Array.prototype.forEach.call(document.querySelectorAll("#pluginRows button"), function(btn){
-    btn.onclick = function(){
-      var id = btn.getAttribute("data-id"), act = btn.getAttribute("data-act");
-      btn.disabled = true;
-      api("/api/plugins/" + encodeURIComponent(id) + "/" + act, { method: "POST" }).then(function(res){
-        if (res.ok) { renderPlugins(res.plugins); refreshStatus(); } else { alert("操作失败：" + (res.error || "")); }
-        btn.disabled = false;
-      }).catch(function(err){ alert("请求失败：" + err); btn.disabled = false; });
-    };
+var PAGES = [
+  ["dashboard", "仪表盘"], ["settings", "设置"], ["plugins", "插件"],
+  ["commands", "命令"], ["events", "事件"], ["logs", "日志"], ["pages", "插件页面"]
+];
+var ICONS = {
+  dashboard: "M3 12h4l3 8 4-16 3 8h4",
+  settings: "M12 15a3 3 0 100-6 3 3 0 000 6zM19 12a7 7 0 00-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 00-1.7-1L14.5 3h-5l-.4 2.6a7 7 0 00-1.7 1l-2.3-1-2 3.4L5 11a7 7 0 000 2l-2 1.5 2 3.4 2.3-1a7 7 0 001.7 1l.4 2.6h5l.4-2.6a7 7 0 001.7-1l2.3 1 2-3.4-2-1.5a7 7 0 00.1-1z",
+  plugins: "M10 3v4H6v4H3v5h3v4h4v-4h4v4h4v-4h3v-5h-3V7h-4V3z",
+  commands: "M4 6h16M4 12h10M4 18h7M17 15l3 3-3 3",
+  events: "M3 12h4l2-6 4 12 2-6h6",
+  logs: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6",
+  pages: "M5 3h9l5 5v13H5zM14 3v6h6"
+};
+function buildNav(){
+  var nav = document.getElementById("nav");
+  clear(nav);
+  PAGES.forEach(function(item){
+    var key = item[0];
+    var icon = h("svg", {viewBox:"0 0 24 24", fill:"none", stroke:"currentColor", "stroke-width":"1.7",
+      "stroke-linecap":"round", "stroke-linejoin":"round"}, [h("path", {d:ICONS[key]})]);
+    var button = h("button", {class:"nav-btn" + (state.page === key ? " active" : ""), onclick: function(){ show(key); }},
+      [icon, h("span", {text:item[1]})]);
+    nav.appendChild(button);
   });
 }
 
-function renderCommands(rows){
-  state.commands = rows;
-  var filter = (state.filter || "").toLowerCase();
-  el("cmdRows").innerHTML = rows.filter(function(c){
-    if (!filter) return true;
-    return (c.name + " " + c.plugin + " " + c.summary + " " + (c.aliases||[]).join(",")).toLowerCase().indexOf(filter) >= 0;
-  }).map(function(c){
-    return "<tr><td><code>/" + esc(c.name) + (c.usage ? " " + esc(c.usage) : "") + "</code></td><td>" +
-      esc((c.aliases || []).join(", ") || "-") + "</td><td>" + esc(c.summary || "-") + "</td><td>" +
-      esc(c.scope) + (c.requires ? " · 需 " + esc(c.requires) : "") + "</td><td><span class='tag'>" + esc(c.plugin) + "</span></td></tr>";
-  }).join("") || '<tr><td colspan="5" class="hint">没有匹配的命令</td></tr>';
+function show(page){
+  state.page = page;
+  if (location.hash !== "#/" + page) location.hash = "#/" + page;
+  buildNav();
+  var content = clear(document.getElementById("content"));
+  var titles = {dashboard:["仪表盘","机器人状态、计数、定时任务、异常提示"], settings:["设置","AppID / AppSecret / 白名单…，保存即写 config.json"],
+    plugins:["插件","左侧选插件，右侧是它的命令、设置、页面"], commands:["命令","全部命令，可搜索"],
+    events:["事件","框架内部事件流"], logs:["日志","session/logs/fap.log"], pages:["插件页面","插件用 ctx.page() 注册的页面"]};
+  document.getElementById("pageTitle").textContent = titles[page][0];
+  document.getElementById("pageSub").textContent = titles[page][1];
+  if (page === "dashboard") renderDashboard(content);
+  if (page === "settings") renderSettings(content);
+  if (page === "plugins") renderPlugins(content);
+  if (page === "commands") renderCommands(content);
+  if (page === "events") renderEvents(content);
+  if (page === "logs") renderLogs(content);
+  if (page === "pages") renderPages(content);
 }
 
-function renderEvents(rows){
-  var box = el("eventRows");
-  if (!rows.length) { if (!box.innerHTML) box.innerHTML = '<div class="hint">（还没有事件）</div>'; return; }
-  var html = rows.map(function(row){
-    var when = new Date(row.at * 1000).toLocaleTimeString();
-    var extra = row.convKey ? (" · " + row.convKey.slice(-8) + (row.text ? "：" + row.text : "")) : "";
-    return "<div>" + when + " · <b>" + esc(row.event) + "</b>" + esc(extra) + "</div>";
-  }).join("");
-  box.innerHTML = html + box.innerHTML;
-  state.lastSeq = Math.max.apply(null, rows.map(function(r){ return r.seq; }).concat([state.lastSeq]));
-  while (box.childNodes.length > 200) box.removeChild(box.lastChild);
+/* ---------------- 仪表盘 ---------------- */
+function renderDashboard(root){
+  var cards = h("div", {class:"grid cards", id:"dashCards"});
+  var chartCard = card("最近 30 分钟收发", [h("div", {class:"chart", id:"chart"}),
+    h("div", {class:"chart-legend"}, [h("span", {}, [h("i", {class:"legend-dot", style:"background:var(--accent)"}), "收到"]),
+      h("span", {}, [h("i", {class:"legend-dot", style:"background:color-mix(in srgb,var(--accent) 35%,transparent)"}), "发出"])])]);
+  var issueCard = card("检查项", [h("div", {id:"issues", class:"empty", text:"检测中…"})]);
+  var jobCard = card("定时任务", [h("div", {id:"jobs", class:"empty", text:"加载中…"})]);
+  root.appendChild(cards);
+  root.appendChild(h("div", {class:"row"}, [chartCard, issueCard]));
+  root.appendChild(h("div", {class:"row"}, [jobCard]));
+  root.appendChild(card("运行信息", [h("div", {id:"dashInfo", class:"pre", text:"加载中…"})]));
+  refreshDashboard();
+  refreshTraffic();
 }
-
-function refreshStatus(){
-  api("/api/status").then(renderStatus).catch(function(){ el("botState").textContent = "连不上控制台"; });
+function refreshDashboard(){
+  api("/api/status").then(function(st){
+    var cards = document.getElementById("dashCards");
+    if (!cards) return;
+    clear(cards);
+    var stats = st.stats || {};
+    cards.appendChild(kpi("收到消息", stats.in || 0));
+    cards.appendChild(kpi("发出回复", stats.out || 0));
+    cards.appendChild(kpi("命令执行", stats.commands || 0));
+    cards.appendChild(kpi("错误", stats.errors || 0));
+    cards.appendChild(kpi("命令总数", st.commands || 0));
+    cards.appendChild(kpi("已加载插件", (st.plugins || []).filter(function(p){ return p.loaded; }).length, "/" + (st.plugins || []).length));
+    var issues = st.issues || [];
+    var box = document.getElementById("issues");
+    if (box) {
+      clear(box);
+      if (!issues.length) { box.className = "empty"; box.textContent = "没有发现问题"; }
+      else {
+        box.className = "";
+        issues.forEach(function(item){
+          var cls = item.level === "error" ? "bad" : (item.level === "warn" ? "warn" : "accent");
+          box.appendChild(h("div", {class:"issue"}, [h("span", {class:"lv"}, [h("span", {class:"chip " + cls, text:item.level})]),
+            h("span", {text:item.text})]));
+        });
+      }
+    }
+    var jobs = document.getElementById("jobs");
+    if (jobs) {
+      clear(jobs);
+      if (!(st.jobs || []).length) { jobs.className = "empty"; jobs.textContent = "没有定时任务"; }
+      else {
+        jobs.className = "";
+        jobs.appendChild(table(["任务","执行次数","错误"], (st.jobs || []).map(function(job){
+          return [h("code", {text:job.name}), String(job.runs), String(job.errors)];
+        })));
+      }
+    }
+    var info = document.getElementById("dashInfo");
+    if (info) {
+      info.textContent = [
+        "状态      " + (st.connected ? "已连接 QQ" : "未连接 QQ"),
+        "版本      " + st.version,
+        "控制台    " + (st.gui_mode === "web" ? "浏览器" : "应用窗口"),
+        "权限角色  " + ((st.roles || []).join(", ") || "（没有插件声明）"),
+        "插件页面  " + ((st.pages || []).map(function(p){ return p.title; }).join(" · ") || "（无）")
+      ].join("\n");
+    }
+  }).catch(function(){});
 }
-function refreshPlugins(){ api("/api/plugins").then(renderPlugins).catch(function(){}); }
-function refreshCommands(){ api("/api/commands").then(renderCommands).catch(function(){}); }
-function refreshEvents(){
-  api("/api/events?since=" + state.lastSeq).then(function(res){ if (res.ok) renderEvents(res.events || []); }).catch(function(){});
-}
-function refreshLogs(){
-  api("/api/logs?lines=120").then(function(res){ el("logBox").textContent = (res.lines || []).join("\n"); }).catch(function(){});
-}
-function refreshConfig(){
-  api("/api/config").then(function(res){
-    var cfg = res.config || {};
-    delete cfg.appsecret; delete cfg.token; delete cfg.gui_token;
-    el("cfgBox").textContent = JSON.stringify(cfg, null, 2);
+function refreshTraffic(){
+  api("/api/traffic?minutes=30").then(function(res){
+    var box = document.getElementById("chart");
+    if (!box) return;
+    clear(box);
+    var buckets = res.buckets || [];
+    var total = buckets.reduce(function(sum, b){ return sum + (b.in || 0) + (b.out || 0); }, 0);
+    if (!total) {
+      box.appendChild(h("div", {class:"empty", style:"width:100%;align-self:center", text:"最近 30 分钟没有收发消息"}));
+      return;
+    }
+    var max = 1;
+    buckets.forEach(function(b){ max = Math.max(max, (b.in || 0) + (b.out || 0)); });
+    buckets.forEach(function(b){
+      var total = (b.in || 0) + (b.out || 0);
+      var height = Math.round((total / max) * 84);
+      var inPart = total ? Math.round(height * (b.in || 0) / total) : 0;
+      box.appendChild(h("div", {class:"bar", title:(b.in || 0) + " 收 / " + (b.out || 0) + " 发"}, [
+        h("div", {class:"b2", style:"height:" + Math.max(0, height - inPart) + "px"}),
+        h("div", {class:"b1", style:"height:" + inPart + "px"})
+      ]));
+    });
   }).catch(function(){});
 }
 
-document.querySelectorAll("nav button").forEach(function(btn){
-  btn.onclick = function(){
-    document.querySelectorAll("nav button").forEach(function(other){ other.classList.remove("active"); });
-    document.querySelectorAll("section").forEach(function(sec){ sec.classList.remove("active"); });
-    btn.classList.add("active");
-    el(btn.getAttribute("data-tab")).classList.add("active");
-    if (btn.getAttribute("data-tab") === "plugins") refreshPlugins();
-    if (btn.getAttribute("data-tab") === "commands") refreshCommands();
-    if (btn.getAttribute("data-tab") === "events") refreshEvents();
-    if (btn.getAttribute("data-tab") === "settings") { refreshConfig(); refreshLogs(); }
-  };
-});
-el("cmdSearch").oninput = function(){ state.filter = this.value; renderCommands(state.commands); };
+/* ---------------- 设置 ---------------- */
+function renderSettings(root, owner, container){
+  owner = owner || "";
+  var target = container || root;
+  var holder = h("div", {class:"card"}, [h("h2", {text: owner ? "插件设置" : "框架设置"}),
+    h("div", {class:"empty", text:"加载中…"})]);
+  target.appendChild(holder);
+  api("/api/settings?owner=" + encodeURIComponent(owner)).then(function(res){
+    clear(holder);
+    holder.appendChild(h("h2", {text: owner ? "插件设置" : "框架设置"}));
+    var fields = res.fields || [];
+    if (!fields.length) { holder.appendChild(h("div", {class:"empty", text:"这个插件没有声明设置项"})); return; }
+    var values = {};
+    var form = h("div", {});
+    fields.forEach(function(field){
+      values[field.key] = field.value;
+      var ctl;
+      if (field.kind === "bool") {
+        ctl = h("div", {class:"switch" + (field.value ? " on" : ""), role:"switch"});
+        ctl.addEventListener("click", function(){
+          var on = ctl.className.indexOf("on") < 0;
+          ctl.className = "switch" + (on ? " on" : "");
+          values[field.key] = on; state.settingsDirty = true;
+        });
+      } else if (field.kind === "choice") {
+        ctl = h("select", {}, (field.choices || []).map(function(choice){
+          return h("option", {value:choice, selected: choice === field.value ? "selected" : null, text:choice});
+        }));
+        ctl.addEventListener("change", function(){ values[field.key] = ctl.value; state.settingsDirty = true; });
+      } else {
+        var isSecret = field.kind === "secret";
+        var type = field.kind === "int" || field.kind === "float" ? "number" : (isSecret ? "password" : "text");
+        var text = Array.isArray(field.value) ? field.value.join(", ") : (field.value === null || field.value === undefined ? "" : String(field.value));
+        if (isSecret && text === "***") { text = ""; values[field.key] = ""; }
+        ctl = h("input", {type:type, value:text, placeholder:(isSecret ? "已保存（留空表示不修改）" : ""), style:"width:min(420px,52vw)"});
+        ctl.addEventListener("input", function(){ values[field.key] = ctl.value; state.settingsDirty = true; });
+      }
+      form.appendChild(h("div", {class:"field"}, [
+        h("div", {class:"label", text:field.label}),
+        h("div", {class:"ctl"}, [ctl, field.kind === "secret" ? h("span", {class:"chip", text:"只显示掩码"}) : null]),
+        field.help ? h("div", {class:"help", text:field.help}) : null
+      ]));
+    });
+    holder.appendChild(form);
+    var bar = h("div", {class:"toolbar", style:"margin-top:14px;margin-bottom:0"}, [
+      h("button", {class:"btn primary", text:"保存", onclick: function(){
+        api("/api/settings", {method:"POST", headers:{"content-type":"application/json"},
+          body: JSON.stringify({owner: owner, values: values})}).then(function(saved){
+          if (saved.ok) toast("已保存"); else toast("保存失败：" + (saved.error || ""));
+        }).catch(function(err){ toast("请求失败：" + err); });
+      }}),
+      h("button", {class:"btn ghost", text:"重新读取", onclick: function(){ show(state.page); }})
+    ]);
+    holder.appendChild(bar);
+  }).catch(function(){});
+}
 
-refreshStatus(); refreshPlugins(); refreshCommands();
-setInterval(refreshStatus, 3000);
-setInterval(refreshEvents, 2000);
-setInterval(function(){ if (el("settings").classList.contains("active")) refreshLogs(); }, 5000);
+/* ---------------- 插件 ---------------- */
+function renderPlugins(root){
+  var list = h("div", {class:"list", id:"pluginList"});
+  var detail = h("div", {id:"pluginDetail", class:"card"}, [h("div", {class:"empty", text:"选择左侧插件"})]);
+  root.appendChild(h("div", {class:"split"}, [list, detail]));
+  api("/api/plugins").then(function(rows){
+    state.plugins = rows;
+    clear(list);
+    rows.forEach(function(row){
+      var button = h("button", {class: row.id === state.pluginId ? "active" : ""}, [
+        h("div", {text:row.name}),
+        h("div", {class:"meta", text:row.id + " · v" + row.version + " · " + row.commands + " 命令"})
+      ]);
+      button.addEventListener("click", function(){ state.pluginId = row.id; renderPlugins(root); });
+      list.appendChild(button);
+    });
+    if (!state.pluginId && rows.length) state.pluginId = rows[0].id;
+    loadPluginDetail(detail, state.pluginId);
+  }).catch(function(){});
+}
+function loadPluginDetail(container, pluginId){
+  clear(container);
+  if (!pluginId) { container.appendChild(h("div", {class:"empty", text:"没有插件"})); return; }
+  api("/api/plugins/" + encodeURIComponent(pluginId)).then(function(res){
+    var plugin = res.plugin;
+    if (!plugin) { container.appendChild(h("div", {class:"empty", text:"插件不存在"})); return; }
+    container.appendChild(h("h2", {text: plugin.name + " · v" + plugin.version}));
+    container.appendChild(h("div", {class:"sub", text: plugin.description || ""}));
+    container.appendChild(h("div", {class:"toolbar", style:"margin-top:12px"}, [
+      h("span", {class:"chip " + (plugin.loaded ? "ok" : "warn"), text: plugin.loaded ? "已加载" : "未加载"}),
+      h("span", {class:"chip", text: plugin.path}),
+      h("span", {class:"spacer", style:"flex:1"}),
+      h("button", {class:"btn", text:"重载", onclick: function(){ pluginAction(pluginId, "reload"); }}),
+      h("button", {class:"btn danger", text:"卸载", onclick: function(){ pluginAction(pluginId, "disable"); }}),
+      h("button", {class:"btn", text:"加载", onclick: function(){ pluginAction(pluginId, "enable"); }})
+    ]));
+    var tabs = h("div", {class:"tabs"});
+    [["commands","命令 " + plugin.commands.length], ["settings","设置 " + plugin.settings.length], ["pages","页面 " + plugin.pages.length]]
+      .forEach(function(item){
+        tabs.appendChild(h("button", {class:"tab" + (state.pluginTab === item[0] ? " active" : ""), text:item[1],
+          onclick: function(){ state.pluginTab = item[0]; loadPluginDetail(container, pluginId); }}));
+      });
+    container.appendChild(tabs);
+    var body = h("div", {});
+    container.appendChild(body);
+    if (state.pluginTab === "commands") {
+      body.appendChild(table(["命令","说明","权限"], plugin.commands.map(function(command){
+        return [h("code", {text:"/" + command.name + (command.usage ? " " + command.usage : "")}),
+          command.summary || "-", command.requires ? h("span", {class:"chip warn", text:command.requires}) : "-"];
+      }), "这个插件没有命令"));
+    } else if (state.pluginTab === "settings") {
+      renderSettings(null, pluginId, body);
+    } else {
+      if (!plugin.pages.length) body.appendChild(h("div", {class:"empty", text:"这个插件没有注册页面（ctx.page）"}));
+      plugin.pages.forEach(function(page){
+        var pre = h("div", {class:"pre", text:"加载中…"});
+        body.appendChild(h("h2", {style:"margin-top:10px", text:page.title + "（" + page.key + "）"}));
+        body.appendChild(pre);
+        api("/api/pages/" + encodeURIComponent(page.key)).then(function(data){
+          pre.textContent = JSON.stringify(data.data !== undefined ? data.data : data, null, 2);
+        }).catch(function(){ pre.textContent = "加载失败"; });
+      });
+    }
+  }).catch(function(){ container.appendChild(h("div", {class:"empty", text:"读取失败"})); });
+}
+function pluginAction(pluginId, action){
+  api("/api/plugins/" + encodeURIComponent(pluginId) + "/" + action, {method:"POST"}).then(function(res){
+    if (res.ok) { toast("已" + action + " " + pluginId); show("plugins"); } else { toast("失败：" + (res.error || "")); }
+  }).catch(function(err){ toast("请求失败：" + err); });
+}
+
+/* ---------------- 命令 ---------------- */
+function renderCommands(root){
+  var search = h("input", {type:"text", placeholder:"搜索命令 / 别名 / 说明 / 插件", style:"width:320px"});
+  var box = h("div", {class:"card"}, [h("h2", {text:"命令表"}), h("div", {id:"cmdTable", class:"empty", text:"加载中…"})]);
+  root.appendChild(h("div", {class:"toolbar"}, [search]));
+  root.appendChild(box);
+  api("/api/commands").then(function(rows){
+    state.commands = rows;
+    function paint(){
+      var needle = search.value.trim().toLowerCase();
+      var filtered = rows.filter(function(row){
+        if (!needle) return true;
+        return (row.name + " " + row.plugin + " " + row.summary + " " + (row.aliases || []).join(",")).toLowerCase().indexOf(needle) >= 0;
+      });
+      var holder = document.getElementById("cmdTable");
+      clear(holder);
+      holder.className = "";
+      holder.appendChild(table(["命令","别名","说明","范围","权限","插件"], filtered.map(function(row){
+        return [
+          h("code", {text:"/" + row.name + (row.usage ? " " + row.usage : "")}),
+          (row.aliases || []).join(", ") || "-",
+          row.summary || "-",
+          row.scope,
+          row.requires ? h("span", {class:"chip warn", text:row.requires}) : "-",
+          h("span", {class:"chip accent", text:row.plugin})
+        ];
+      }), "没有匹配的命令"));
+    }
+    search.addEventListener("input", paint);
+    paint();
+  }).catch(function(){});
+}
+
+/* ---------------- 事件 ---------------- */
+function renderEvents(root){
+  var filter = h("input", {type:"text", placeholder:"按事件名 / 会话过滤", style:"width:260px"});
+  var stream = h("div", {class:"stream", id:"stream"});
+  var hint = h("span", {class:"sub", text:"实时"});
+  var pause = h("button", {class:"btn", text:"暂停", onclick: function(){
+    state.eventPaused = !state.eventPaused; pause.textContent = state.eventPaused ? "继续" : "暂停";
+    hint.textContent = state.eventPaused ? "已暂停" : "实时";
+  }});
+  root.appendChild(h("div", {class:"toolbar"}, [filter, pause,
+    h("button", {class:"btn ghost", text:"清空", onclick: function(){ clear(stream); }}), hint]));
+  root.appendChild(h("div", {class:"card"}, [stream]));
+  filter.addEventListener("input", function(){ state.eventFilter = filter.value.trim().toLowerCase(); clear(stream); state.lastSeq = 0; pollEvents(); });
+  state.lastSeq = 0;
+  clear(stream);
+  function pollEvents(){
+    if (state.eventPaused || state.page !== "events") return;
+    api("/api/events?since=" + state.lastSeq).then(function(res){
+      var rows = res.events || [];
+      rows.forEach(function(row){
+        state.lastSeq = Math.max(state.lastSeq, row.seq || 0);
+        var text = (row.event + " " + (row.convKey || "")).toLowerCase();
+        if (state.eventFilter && text.indexOf(state.eventFilter) < 0) return;
+        var time = new Date((row.at || 0) * 1000).toLocaleTimeString();
+        stream.appendChild(h("div", {}, [h("span", {class:"t", text:time}), h("span", {class:"e", text:row.event}),
+          h("span", {class:"m", text:(row.convKey ? row.convKey.slice(-8) + "  " : "") + (row.text || "")})]));
+      });
+      while (stream.childNodes.length > 300) stream.removeChild(stream.firstChild);
+    }).catch(function(){});
+  }
+  pollEvents();
+}
+
+/* ---------------- 日志 ---------------- */
+function renderLogs(root){
+  var lines = h("select", {}, [["120","500","100"].map(function(n){ return h("option", {value:n, text:n + " 行"}); })]);
+  var follow = h("input", {type:"checkbox", checked:"checked"});
+  var pre = h("div", {class:"pre", id:"logPre", text:"加载中…"});
+  var refresh = h("button", {class:"btn", text:"刷新", onclick: function(){ load(); }});
+  root.appendChild(h("div", {class:"toolbar"}, [h("span", {class:"sub", text:"会话日志"}), lines, h("label", {class:"sub"}, [follow, " 自动滚到底部"]), refresh]));
+  root.appendChild(h("div", {class:"card"}, [pre]));
+  function load(){
+    api("/api/logs?lines=" + (lines.value || 120)).then(function(res){
+      pre.textContent = (res.lines || []).join("\n");
+      if (follow.checked) pre.scrollTop = pre.scrollHeight;
+    }).catch(function(){ pre.textContent = "读取失败"; });
+  }
+  lines.addEventListener("change", load);
+  load();
+}
+
+/* ---------------- 插件页面 ---------------- */
+function renderPages(root){
+  var picker = h("select", {style:"min-width:240px"});
+  var pre = h("div", {class:"pre", text:"选择一个页面"});
+  root.appendChild(h("div", {class:"toolbar"}, [picker, h("button", {class:"btn", text:"渲染", onclick: function(){ load(); }})]));
+  root.appendChild(h("div", {class:"card"}, [pre]));
+  api("/api/pages").then(function(res){
+    var pages = res.pages || [];
+    if (!pages.length) { pre.textContent = "没有插件注册页面"; return; }
+    pages.forEach(function(page){ picker.appendChild(h("option", {value:page.key, text:page.title + " (" + page.plugin + ")"})); });
+    function load(){
+      api("/api/pages/" + encodeURIComponent(picker.value)).then(function(data){
+        pre.textContent = JSON.stringify(data.data !== undefined ? data.data : data, null, 2);
+      }).catch(function(){ pre.textContent = "渲染失败"; });
+    }
+    picker.addEventListener("change", load);
+    load();
+  }).catch(function(){ pre.textContent = "读取失败"; });
+}
+
+/* ---------------- 顶栏 ---------------- */
+function pollStatus(){
+  api("/api/status").then(function(st){
+    var conn = document.getElementById("pillConn");
+    conn.className = "pill";
+    conn.innerHTML = "";
+    conn.appendChild(h("span", {class:"dot " + (st.connected ? "on" : "off")}));
+    conn.appendChild(h("span", {text: st.connected ? "QQ 已连接" : "QQ 未连接"}));
+    document.getElementById("pillUp").textContent = "uptime " + fmtUptime(st.uptime_s);
+    var plugins = st.plugins || [];
+    document.getElementById("pillPlugins").textContent = "插件 " + plugins.filter(function(p){ return p.loaded; }).length + "/" + plugins.length;
+    document.getElementById("brandVer").textContent = "frame + plugin · v" + st.version;
+    document.getElementById("sideFoot").innerHTML = "";
+    document.getElementById("sideFoot").appendChild(h("div", {}, [
+      h("span", {class:"dot " + (st.connected ? "on" : "off")}), h("b", {text: st.connected ? "在线" : "离线"})]));
+    document.getElementById("sideFoot").appendChild(h("div", {text:"运行 " + fmtUptime(st.uptime_s)}));
+    document.getElementById("sideFoot").appendChild(h("div", {text:"命令 " + (st.commands || 0) + " 条"}));
+    if (state.page === "dashboard") refreshDashboard();
+  }).catch(function(){});
+}
+
+buildNav();
+window.addEventListener("hashchange", function(){
+  var key = (location.hash || "").replace("#/", "") || "dashboard";
+  if (key !== state.page) show(key);
+});
+var initial = (location.hash || "").replace("#/", "") || "dashboard";
+show(PAGES.some(function(p){ return p[0] === initial; }) ? initial : "dashboard");
+pollStatus();
+setInterval(pollStatus, 3000);
+setInterval(function(){ if (state.page === "events") { /* 事件轮询在页面内自行处理 */ } }, 3000);
 </script>
 </body>
 </html>

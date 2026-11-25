@@ -60,6 +60,7 @@ class FapApp:
         self.settings = SettingsRegistry()
         self.members: Dict[str, Dict[str, str]] = {}   # conv_key → {短号: openid}
         self._send_window: Dict[str, list] = {}
+        self._traffic: List[tuple] = []      # [(时间戳, "in"|"out")]，只保留最近 2000 条
         self._stats: Dict[str, int] = {"in": 0, "out": 0, "commands": 0, "errors": 0}
 
     # -- 路径 ---------------------------------------------------------------
@@ -110,6 +111,25 @@ class FapApp:
         self._send_window[conv_key] = window
         return False
 
+    # -- 流量序列 -----------------------------------------------------------
+    def _record_traffic(self, kind: str) -> None:
+        self._traffic.append((time.time(), kind))
+        if len(self._traffic) > 2000:
+            del self._traffic[: len(self._traffic) - 2000]
+
+    def traffic(self, minutes: int = 30) -> Dict[str, Any]:
+        """最近 N 分钟按分钟分桶的收发量（给仪表盘画柱状图）。"""
+        now = time.time()
+        span = max(1, int(minutes))
+        buckets = [{"at": now - (span - index) * 60, "in": 0, "out": 0} for index in range(span)]
+        start = now - span * 60
+        for stamp, kind in self._traffic:
+            if stamp < start:
+                continue
+            slot = min(span - 1, int((stamp - start) // 60))
+            buckets[slot][kind] = int(buckets[slot].get(kind, 0)) + 1
+        return {"minutes": span, "buckets": buckets}
+
     # -- 生命周期 -----------------------------------------------------------
     def _register_core_settings(self) -> None:
         """框架自己的设置项：GUI 的「设置」页据此渲染，不用为每个键写界面。"""
@@ -140,7 +160,10 @@ class FapApp:
         for spec in self.settings.specs(owner):
             if spec.key not in values:
                 continue
-            value = spec.coerce(values[spec.key])
+            raw = values[spec.key]
+            if spec.kind == "secret" and str(raw).strip() in ("", "***"):
+                continue          # 留空 = 不修改，避免把掩码写进配置
+            value = spec.coerce(raw)
             if owner:
                 plugin_patch[spec.key] = value
             else:
@@ -192,6 +215,8 @@ class FapApp:
         self._register_core_commands()
         self._register_core_settings()
         await self.events.emit("app.starting", app=self)
+        if self.config.get("gui"):
+            self.attach_gui()          # 页面注册表先就位，插件才能注册页面
         loaded = await self.plugins.load_all(self.config.get("enabled_plugins") or None)
         log.info("plugins loaded: %s", ", ".join(loaded) or "(none)")
         await self.scheduler.start()
@@ -208,19 +233,22 @@ class FapApp:
         mode = str(self.config.get("gui_mode", "app") or "app").strip().lower()
         return mode if mode in ("app", "web") else "app"
 
-    async def start_gui(self) -> None:
-        """两种 GUI：app = 原生窗口套壳（tkinter），web = 浏览器控制台。"""
+    def attach_gui(self) -> None:
+        """先建 Panel（页面注册表），插件 setup 里的 ctx.page() 才不会落空。"""
+        if self.gui is not None:
+            return
         try:
             from framework.gui.panel import Panel
         except Exception as error:  # noqa: BLE001
             log.warning("gui unavailable (%s); running headless", error)
             return
-        # 两种模式都建 Panel：它同时是插件页面注册表
         self.gui = Panel(self)
-        if self.gui_mode() == "web":
+
+    async def start_gui(self) -> None:
+        """启动控制台服务端（app 模式由 CLI 再套一层无地址栏窗口）。"""
+        self.attach_gui()
+        if self.gui is not None:
             await self.gui.start()
-        else:
-            log.info("gui mode=app：原生窗口由 framework.gui.shell 启动")
 
     async def stop(self) -> None:
         self._running = False
@@ -248,6 +276,7 @@ class FapApp:
     # -- 入站总入口 ---------------------------------------------------------
     async def on_message(self, message: Message) -> None:
         self._stats["in"] += 1
+        self._record_traffic("in")
         self._stats["errors"] = self._stats.get("errors", 0)
         start = time.time()
         log.info("in %s %s: %r", message.kind, message.sender.short, (message.text or "")[:60])
@@ -298,6 +327,7 @@ class FapApp:
             log.warning("rate limit hit in %s; outbound dropped", target.conv_key)
             return None
         self._stats["out"] += 1
+        self._record_traffic("out")
         await self.events.emit("outbound", app=self, target=target, text=text)
         return await self.bot.send(target, text, **kwargs)
 

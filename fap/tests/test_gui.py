@@ -85,6 +85,55 @@ class ConsoleSnapshotTest(unittest.TestCase):
         self.assertEqual(rows[-1]["index"], 7)
         self.assertEqual(bus.history(since=rows[-1]["seq"]), [])
 
+    def test_settings_snapshot_masks_secret(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            app = self._app(folder)
+            app.config.update({"appsecret": "top-secret"})
+            rows = {row["key"]: row for row in Panel(app).snapshot_settings("")}
+            self.assertIn("appid", rows)
+            self.assertEqual(rows["appsecret"]["kind"], "secret")
+            self.assertEqual(rows["appsecret"]["value"], "***")
+
+    def test_settings_snapshot_plugin(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            app = self._app(folder)
+            rows = {row["key"]: row for row in Panel(app).snapshot_settings("pet_game")}
+            self.assertIn("feed_cooldown_s", rows)
+            self.assertEqual(rows["feed_cooldown_s"]["kind"], "int")
+
+    def test_plugin_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            app = self._app(folder)
+            # 页面注册需要有 Panel（GUI 模式）；这里手动挂上再热重载一次
+            app.gui = Panel(app)
+            asyncio.run(app.plugins.reload("dsh_bridge"))
+            detail = Panel(app).snapshot_plugin_detail("dsh_bridge")
+            self.assertEqual(detail["id"], "dsh_bridge")
+            self.assertGreaterEqual(len(detail["commands"]), 16)
+            self.assertGreaterEqual(len(detail["settings"]), 4)
+            self.assertTrue(any(page["key"] == "dsh" for page in detail["pages"]))
+            self.assertIsNone(Panel(app).snapshot_plugin_detail("nope"))
+
+    def test_issues_and_traffic(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            app = self._app(folder)
+            issues = Panel(app).snapshot_issues()
+            self.assertTrue(any("AppID" in item["text"] for item in issues))   # 测试环境没填 appid
+            app._record_traffic("in")
+            app._record_traffic("out")
+            data = app.traffic(5)
+            self.assertEqual(len(data["buckets"]), 5)
+            self.assertEqual(sum(bucket["in"] for bucket in data["buckets"]), 1)
+            self.assertEqual(sum(bucket["out"] for bucket in data["buckets"]), 1)
+
+    def test_index_served_without_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            app = self._app(folder)
+            html = (ROOT / "framework" / "gui" / "index.html").read_text(encoding="utf-8")
+            self.assertIn("/api/status", html)
+            self.assertIn("no-store", (ROOT / "framework" / "gui" / "panel.py").read_text(encoding="utf-8"))
+
+
 
 if __name__ == "__main__":
     unittest.main()
