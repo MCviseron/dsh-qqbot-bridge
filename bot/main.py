@@ -803,6 +803,31 @@ class DSHBot(Client):
             )
         )
 
+    def _note_bot_say(self, conv_key: str, text: str) -> None:
+        """记住机器人在这个会话里最后一次真正说出去的话（插话判断要用）。"""
+        body = str(text or "").strip()
+        if not body:
+            return
+        said = getattr(self, "_last_bot_say", None)
+        if said is None:
+            said = self._last_bot_say = {}
+        said[conv_key] = (body[:160], time.time())
+
+    def _last_bot_say_of(self, conv_key: str) -> Tuple[str, float]:
+        """最近说过什么：优先内存记录，其次回看消息池里自己发的那几条。"""
+        said = getattr(self, "_last_bot_say", {}) or {}
+        text, at = said.get(conv_key, ("", 0.0))
+        if text:
+            return text, at
+        try:
+            items = [item for item in self._pool_items(conv_key) if item.outbound]
+        except Exception:  # noqa: BLE001 - 池不可用就当没说过
+            items = []
+        if not items:
+            return "", 0.0
+        last = items[-1]
+        return str(last.text or ""), float(last.at)
+
     def _pool_sent(self, target: Target, result: Any, text: str) -> None:
         if isinstance(result, dict):
             message_id = str(result.get("id") or "")
@@ -1407,6 +1432,7 @@ class DSHBot(Client):
         else:
             result = await self.api.post_c2c_message(openid=target.openid, **payload)
         self._pool_sent(target, result, chunk)
+        self._note_bot_say(target.conv_key, chunk)
         return result
 
     def _display_name(self, conv_key: str, member_openid: str) -> str:
@@ -3140,7 +3166,7 @@ class DSHBot(Client):
         streak = self._judge_streaks().get(conv_key, 0)
         if streak >= max(1, self.rt_int("judge_silent_streak", 3)):
             lowered = max(0, base - 1)
-        spoke_at = self._last_bot_say.get(conv_key, ("", 0.0))[1]
+        spoke_at = self._last_bot_say_of(conv_key)[1]
         quiet = time.time() - spoke_at if spoke_at else float("inf")
         hourly = max(0, self.rt_int("judge_force_per_hour", 1))
         forced = self._judge_forces()
@@ -3194,7 +3220,7 @@ class DSHBot(Client):
         entry.lines.clear()
         entry.first_at = 0.0
         entry.last_judge_at = now
-        spoke_text, spoke_at = self._last_bot_say.get(conv_key, ("", 0.0))
+        spoke_text, spoke_at = self._last_bot_say_of(conv_key)
         since = time.time() - spoke_at if spoke_text else float("inf")
         if spoke_text and since < self.rt_float("bot_say_memory_s", self.config.bot_say_memory_s):
             situation = (
