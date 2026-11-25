@@ -77,6 +77,7 @@ class PluginContext:
         self.commands: CommandTable = app.commands
         self.events: EventBus = app.events
         self.scheduler: Scheduler = app.scheduler
+        self.permissions = app.permissions
         self._subscriptions: List[Any] = []
         self._jobs: List[str] = []
 
@@ -109,7 +110,7 @@ class PluginContext:
         summary: str = "",
         usage: str = "",
         scope: str = "both",
-        owner_only: bool = False,
+        requires: str = "",
         hidden: bool = False,
         order: int = 100,
     ):
@@ -119,7 +120,7 @@ class PluginContext:
             summary=summary,
             usage=usage,
             scope=scope,
-            owner_only=owner_only,
+            requires=requires,
             hidden=hidden,
             plugin=self.id,
             order=order,
@@ -166,6 +167,7 @@ class PluginContext:
             self.scheduler.cancel(name)
         self._jobs.clear()
         self.commands.unregister_plugin(self.id)
+        self.permissions.unregister_plugin(self.id)
         gui = getattr(self.app, "gui", None)
         if gui is not None:
             gui.unregister_plugin(self.id)

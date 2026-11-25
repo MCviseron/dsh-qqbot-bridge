@@ -10,14 +10,14 @@ from framework.commands import CommandTable, CommandError
 from framework.types import Message, Sender, Target
 
 
-def make_message(text: str, *, group: bool = True, owner: bool = False) -> Message:
+def make_message(text: str, *, group: bool = True) -> Message:
     kind = "group" if group else "c2c"
     conv = kind + ":CONV"
     return Message(
         id="M1",
         kind=kind,
         conv_key=conv,
-        sender=Sender(openid="U1", nickname="测试", is_owner=owner),
+        sender=Sender(openid="U1", nickname="测试"),
         text=text,
         target=Target(kind=kind, openid="CONV", conv_key=conv),
     )
@@ -37,6 +37,8 @@ class CommandTableTest(unittest.TestCase):
     def setUp(self) -> None:
         self.table = CommandTable(prefix="/")
         self.app = FakeApp()
+        from framework.permissions import PermissionRegistry
+        self.app.permissions = PermissionRegistry()
 
     def test_register_and_dispatch(self) -> None:
         calls = []
@@ -76,17 +78,25 @@ class CommandTableTest(unittest.TestCase):
         self.assertIsNone(self.table.resolve("/nope"))
         self.assertIsNone(self.table.resolve("没有斜杠"))
 
-    def test_owner_only(self) -> None:
-        @self.table.command("危险", owner_only=True)
+    def test_role_requirement(self) -> None:
+        from framework.permissions import PermissionRegistry
+
+        registry = PermissionRegistry()
+        registry.register(lambda message, role: role == "owner" and message.sender.openid == "U1", plugin="test")
+        self.app.permissions = registry
+
+        @self.table.command("危险", requires="owner")
         async def _danger(ctx):
             await ctx.say("执行")
 
         asyncio.run(self.table.dispatch(self.app, make_message("/危险")))
-        self.assertEqual(self.app.sent, ["这条命令只有主人能用。"])
+        self.assertEqual(self.app.sent, ["执行"])
 
         self.app.sent.clear()
-        asyncio.run(self.table.dispatch(self.app, make_message("/危险", owner=True)))
-        self.assertEqual(self.app.sent, ["执行"])
+        denied = make_message("/危险")
+        denied.sender.openid = "U2"
+        asyncio.run(self.table.dispatch(self.app, denied))
+        self.assertEqual(self.app.sent, ["这条命令需要「owner」权限。"])
 
     def test_scope_guard(self) -> None:
         @self.table.command("私聊专用", scope="c2c")
@@ -127,15 +137,15 @@ class CommandTableTest(unittest.TestCase):
         async def _u(ctx):
             return None
 
-        @self.table.command("owner-cmd", summary="主人", owner_only=True)
+        @self.table.command("owner-cmd", summary="主人", requires="owner")
         async def _o(ctx):
             return None
 
-        plain = self.table.help_text(scope="both", is_owner=False)
+        plain = self.table.help_text(scope="both", roles=[])
         self.assertIn("user-cmd", plain)
         self.assertNotIn("owner-cmd", plain)
 
-        admin = self.table.help_text(scope="both", is_owner=True)
+        admin = self.table.help_text(scope="both", roles=["owner"])
         self.assertIn("owner-cmd", admin)
 
     def test_duplicate_rejected(self) -> None:

@@ -10,28 +10,71 @@ from pathlib import Path
 from framework.app import FapApp
 from framework.bot import QQBot, looks_like_markdown
 
+ROOT = Path(__file__).resolve().parents[1]
 
-class OwnerPersistTest(unittest.TestCase):
-    def test_claim_is_persisted_across_restart(self) -> None:
-        with tempfile.TemporaryDirectory() as folder:
+
+class PermissionTest(unittest.TestCase):
+    def test_registry_defaults_to_deny(self) -> None:
+        from framework.permissions import PermissionRegistry
+        from framework.types import Message, Sender, Target
+
+        registry = PermissionRegistry()
+        message = Message(
+            id="M1", kind="group", conv_key="group:A",
+            sender=Sender(openid="U1"), text="/x",
+            target=Target(kind="group", openid="A", conv_key="group:A"),
+        )
+        self.assertTrue(registry.has(message, ""))            # 不要求角色
+        self.assertFalse(registry.has(message, "owner"))      # 没人声明就拒绝
+
+    def test_plugin_registered_role(self) -> None:
+        from framework.permissions import PermissionRegistry
+        from framework.types import Message, Sender, Target
+
+        registry = PermissionRegistry()
+        registry.register(lambda message, role: role == "owner" and message.sender.openid == "U1", plugin="p")
+        message = Message(
+            id="M1", kind="group", conv_key="group:A",
+            sender=Sender(openid="U1"), text="/x",
+            target=Target(kind="group", openid="A", conv_key="group:A"),
+        )
+        self.assertTrue(registry.has(message, "owner"))
+        self.assertFalse(registry.has(message, "admin"))
+        self.assertEqual(registry.unregister_plugin("p"), 1)
+        self.assertFalse(registry.has(message, "owner"))
+
+
+class OwnerGuardPluginTest(unittest.TestCase):
+    def test_claim_persists_and_grants_role(self) -> None:
+        import asyncio
+        from framework.types import Message, Sender, Target
+
+        def boot(folder: str):
             app = FapApp(root=Path(folder), log_to_file=False)
-            self.assertTrue(app.is_owner("USER-A"))          # 首次发言认领
-            self.assertFalse(app.is_owner("USER-B"))
-            app2 = FapApp(root=Path(folder), log_to_file=False)
-            self.assertTrue(app2.is_owner("USER-A"))         # 重启后仍是同一主人
-            self.assertFalse(app2.is_owner("USER-B"))
+            app.plugins.plugins_dir = ROOT / "plugins"
+            asyncio.run(app.start(connect=False))
+            return app
 
-    def test_configured_owner_wins(self) -> None:
+        def msg(openid: str) -> Message:
+            return Message(
+                id="M-" + openid, kind="c2c", conv_key="c2c:" + openid,
+                sender=Sender(openid=openid, nickname="测试"), text="/认领",
+                target=Target(kind="c2c", openid=openid, conv_key="c2c:" + openid),
+            )
+
         with tempfile.TemporaryDirectory() as folder:
-            app = FapApp(root=Path(folder), log_to_file=False)
-            app.config.update({"owners": ["OWNER-X"]})
-            self._noop()
-            fresh = FapApp(root=Path(folder), log_to_file=False)
-            self.assertTrue(fresh.is_owner("OWNER-X"))
+            app = boot(folder)
+            plugin = app.plugins.loaded["owner_guard"]
+            self.assertFalse(plugin.is_owner("USER-A"))
+            asyncio.run(app.on_message(msg("USER-A")))
+            self.assertTrue(plugin.is_owner("USER-A"))
+            self.assertTrue(app.permissions.has(msg("USER-A"), "owner"))
+            self.assertFalse(app.permissions.has(msg("USER-B"), "owner"))
+            asyncio.run(app.stop())
 
-    @staticmethod
-    def _noop() -> None:
-        return None
+            fresh = boot(folder)
+            self.assertTrue(fresh.plugins.loaded["owner_guard"].is_owner("USER-A"))
+            asyncio.run(fresh.stop())
 
 
 class PolicyTest(unittest.TestCase):

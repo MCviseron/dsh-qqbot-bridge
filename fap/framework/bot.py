@@ -153,7 +153,7 @@ class QQBot:
                 nickname = value.strip()
                 break
         target = Target(kind=kind, openid=conv_openid, conv_key=kind + ":" + conv_openid)
-        sender = Sender(openid=openid, nickname=nickname, is_owner=self.app.is_owner(openid))
+        sender = Sender(openid=openid, nickname=nickname)
         images = self._collect_images(message)
         return Message(
             id=message_id,

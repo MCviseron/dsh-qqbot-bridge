@@ -28,6 +28,18 @@
 **此时应设 `connect_qq=false`**，否则框架与旧机器人会抢同一个 AppID。
 迁移路线见 `plugins/dsh_bridge/README.md`。
 
+## owner_guard — 主人 / 权限
+
+| 项 | 内容 |
+|---|---|
+| id / 版本 | owner_guard / 1.0.0 |
+| 命令 | /认领、/主人、/移交 |
+| 配置 | owners（显式 openid）、claim_on_first（允许认领） |
+| 提供角色 | owner（通过框架的 PermissionRegistry） |
+
+这套东西**从框架里搬出来了**：框架只提供角色注册表，谁是主人由本插件决定并落盘
+（session/state/owner_guard/owner.json）。其它插件要限制命令，只写 requires="owner"。
+
 ## pet_game — 群内养成游戏
 
 | 项 | 内容 |
@@ -39,11 +51,12 @@
 
 完全用框架能力实现（命令表 + 事件 + 定时器 + 存储 + 面板页），可作为插件模板参考。
 
-## 命令总表（29 条）
+## 命令总表（32 条）
 
-框架 5 条 + dsh_bridge 18 条 + pet_game 6 条。
+框架 5 条 + owner_guard 3 条 + dsh_bridge 18 条 + pet_game 6 条。
 
 框架：/help /ping /plugins /version /reload
+主人：/认领 /主人 /移交
 桥接（框架实现）：/状态 /日志 /面板 /dsh
 桥接（旧机器人专有）：/绑定 /重置 /分组 /菜单 /pr /链接 /截图 /窗口 /会话 /切会话 /切回 /花费 /撤回 /消息池
 养成：/领养 /宠物 /喂食 /摸摸 /改名 /排行

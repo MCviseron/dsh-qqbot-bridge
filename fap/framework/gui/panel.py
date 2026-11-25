@@ -64,7 +64,8 @@ class Panel:
         application.router.add_get("/api/logs", self._api_logs)
         application.router.add_get("/api/config", self._api_config)
         application.router.add_get("/api/pages/{key}", self._api_page)
-        self._runner = web.AppRunner(application)
+        # access_log=None：控制台每次轮询都会打一行，不关会把日志刷满
+        self._runner = web.AppRunner(application, access_log=None)
         await self._runner.setup()
         host = str(self.app.config.get("gui_host", "127.0.0.1"))
         port = int(self.app.config.get("gui_port", 39080))
@@ -203,7 +204,7 @@ class Panel:
                     "usage": command.usage,
                     "summary": command.summary,
                     "scope": command.scope,
-                    "owner_only": command.owner_only,
+                    "requires": command.requires,
                     "plugin": command.plugin or "framework",
                     "hidden": command.hidden,
                 }

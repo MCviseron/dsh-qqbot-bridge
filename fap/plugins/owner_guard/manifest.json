@@ -1,0 +1,11 @@
+{
+  "id": "owner_guard",
+  "name": "主人 / 权限",
+  "version": "1.0.0",
+  "description": "把「主人」这套业务从框架里搬出来：认领、查看、移交，并向框架声明 owner 角色。",
+  "entry": "plugin.py",
+  "class_name": "OwnerGuardPlugin",
+  "requires_gui": false,
+  "default_enabled": true,
+  "author": "MCviseron"
+}

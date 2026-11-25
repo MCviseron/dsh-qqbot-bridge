@@ -37,9 +37,9 @@ class CommandContext:
     def conv_key(self) -> str:
         return self.message.conv_key
 
-    @property
-    def is_owner(self) -> bool:
-        return bool(self.message.sender.is_owner)
+    def has_role(self, role: str) -> bool:
+        """向插件的权限声明询问；框架不预设任何角色。"""
+        return self.app.permissions.has(self.message, role)
 
     @property
     def config(self) -> Any:
@@ -71,7 +71,7 @@ class Command:
     summary: str = ""
     usage: str = ""
     scope: str = "both"          # both | group | c2c
-    owner_only: bool = False
+    requires: str = ""           # 所需角色名（由插件通过 PermissionRegistry 声明）
     hidden: bool = False
     plugin: str = ""
     order: int = 100
@@ -119,7 +119,7 @@ class CommandTable:
         summary: str = "",
         usage: str = "",
         scope: str = "both",
-        owner_only: bool = False,
+        requires: str = "",
         hidden: bool = False,
         plugin: str = "",
         order: int = 100,
@@ -135,7 +135,7 @@ class CommandTable:
                     summary=summary,
                     usage=usage,
                     scope=scope,
-                    owner_only=owner_only,
+                    requires=requires,
                     hidden=hidden,
                     plugin=plugin,
                     order=order,
@@ -185,7 +185,7 @@ class CommandTable:
         raw = body[len(name):].strip()
         return command, rest, raw
 
-    def help_text(self, *, scope: str = "both", is_owner: bool = False, plugin: str = "") -> str:
+    def help_text(self, *, scope: str = "both", roles: Optional[List[str]] = None, plugin: str = "") -> str:
         """按插件分组输出；同一插件的命令一定连在一起（不受 order 影响）。"""
         groups: Dict[str, List[Command]] = {}
         for command in self.unique():
@@ -195,7 +195,7 @@ class CommandTable:
                 continue
             if command.scope not in ("both", scope):
                 continue
-            if command.owner_only and not is_owner:
+            if command.requires and command.requires not in (roles or []):
                 continue
             groups.setdefault(command.plugin, []).append(command)
         blocks: List[str] = []
@@ -217,9 +217,11 @@ class CommandTable:
         if command.scope == "c2c" and message.is_group:
             await app.send(message.target, "这条命令只能在私聊用。")
             return None
-        if command.owner_only and not message.sender.is_owner:
-            await app.send(message.target, "这条命令只有主人能用。")
-            return None
+        if command.requires:
+            allowed = app.permissions.has(message, command.requires)
+            if not allowed:
+                await app.send(message.target, "这条命令需要「" + command.requires + "」权限。")
+                return None
         context = CommandContext(app=app, message=message, command=command, args=args, raw_args=raw)
         try:
             result = command.handler(context)

@@ -10,7 +10,8 @@
 | 版本 | 启动方式 | 适用 |
 |---|---|---|
 | **非 GUI（本项目用法）** | `python -m framework.cli --no-gui` | 服务器 / 后台常驻，不装 aiohttp 也能跑 |
-| **GUI** | `python -m framework.cli --gui` | 像应用一样的本地控制台：机器人状态、插件启停/热重载、命令表、事件流、日志 |
+| **GUI（应用套壳）** | 双击 `start-gui.bat` 或 `python -m framework.cli --gui` | 原生桌面窗口：机器人状态、插件启停/热重载、命令表、事件流、插件页面、日志 |
+| **GUI（浏览器版）** | `start-web-console.bat` / `--gui --web-console` | 同一个控制台的网页形态（http://127.0.0.1:39080/） |
 
 两个版本共用同一份 `framework/` 与同一批插件；GUI 只是额外加载 `framework/gui/`。
 
@@ -32,8 +33,10 @@ fap/
 │   └── gui/panel.py      可选 Web 面板（插件可注册页面）
 ├── plugins/
 │   ├── dsh_bridge/       QQ ⇄ DSH 桥接（托管已有机器人进程）
+│   ├── owner_guard/      主人 / 权限（从框架里搬出来的业务）
 │   └── pet_game/         群内养成游戏（纯框架实现）
 ├── docs/                 框架文档
+├── start-*.bat           双击启动（GUI / 无界面 / 只看界面 / 浏览器版）
 ├── examples/             最小可运行示例
 ├── tests/                自测（不依赖网络/pytest）
 └── legacy/               现有项目原样副本（供 dsh_bridge 托管）
@@ -43,6 +46,9 @@ fap/
 
 ```bash
 cd fap
+start-gui.bat                            # 双击：原生窗口控制台
+start-nogui.bat                          # 双击：无界面常驻
+start-console-only.bat                   # 双击：只开窗口，不连 QQ
 python -m framework.cli --dry-run        # 只看插件与命令表，不连 QQ
 python -m framework.cli --list-commands  # 打印命令表
 python -m framework.cli --no-gui         # 真的连 QQ（需要 config.json 里的 appid/secret）
@@ -52,10 +58,11 @@ python tests/run_tests.py                # 自测
 配置文件默认 `fap/config.json`（参考 `config.example.json`），也可用 `--config` 指定；
 任意键都能被环境变量 `FAP_<KEY>` 覆盖，例如 `FAP_GUI_PORT=39090`。
 
-## 命令表（框架 + 两个插件，共 29 条）
+## 命令表（框架 + 三个插件，共 32 条）
 
 ```
 /help  /ping  /plugins  /version  /reload <插件id>            ← 框架自带（5）
+/认领  /主人  /移交 <短号|openid>                             ← owner_guard（3）
 /状态  /日志 [行数]  /面板  /dsh [status|start|stop|...]      ← dsh_bridge 框架侧（4）
 /绑定 /重置 /分组 /菜单 /pr /链接 /截图 /窗口 /会话 /切会话
 /切回 /花费 /撤回 /消息池                                    ← dsh_bridge 旧机器人专有（14）

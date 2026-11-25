@@ -20,7 +20,7 @@ from framework import logging as fap_logging
 from framework.bot import QQBot
 from framework.commands import CommandTable
 from framework.config import Config
-from framework.storage import JsonStore
+from framework.permissions import PermissionRegistry
 from framework.events import EventBus
 from framework.plugin import PluginManager
 from framework.scheduler import Scheduler
@@ -52,12 +52,11 @@ class FapApp:
         self.plugins = PluginManager(self, plugins_dir or (self.root / str(self.config.get("plugins_dir", "plugins"))))
         self.bot = QQBot(self)
         self.gui: Any = None
+        self.loop: Any = None
         self.started_at = 0.0
         self._running = False
-        self._frame_store = JsonStore(self.state_dir / "framework.json", {"owner": ""})
-        stored_owner = str(self._frame_store.get("owner", "") or "")
-        configured = list(self.config.owner_ids())
-        self._owner_openid = configured[0] if configured else stored_owner
+        self.permissions = PermissionRegistry()
+        self.members: Dict[str, Dict[str, str]] = {}   # conv_key → {短号: openid}
         self._send_window: Dict[str, list] = {}
         self._stats: Dict[str, int] = {"in": 0, "out": 0, "commands": 0, "errors": 0}
 
@@ -109,19 +108,6 @@ class FapApp:
         self._send_window[conv_key] = window
         return False
 
-    # -- 主人 ---------------------------------------------------------------
-    def is_owner(self, openid: str) -> bool:
-        if not openid:
-            return False
-        if openid in set(self.config.owner_ids()):
-            return True
-        if not self._owner_openid and self.config.get("claim_owner", True):
-            self._owner_openid = openid
-            self._frame_store.set("owner", openid)
-            log.info("owner claimed by first message: %s（已落盘）", openid[-6:])
-            return True
-        return openid == self._owner_openid
-
     # -- 生命周期 -----------------------------------------------------------
     def _register_core_commands(self) -> None:
         """框架自带的通用命令：/help /ping /plugins /version（不属于任何插件）。"""
@@ -129,7 +115,8 @@ class FapApp:
 
         @table.command("help", aliases=("帮助", "指令"), summary="看命令表", order=1)
         async def _help(context) -> None:
-            await context.say(table.help_text(scope="group" if context.message.is_group else "c2c", is_owner=context.is_owner))
+            roles = [role for role in ("owner", "admin") if self.permissions.has(context.message, role)]
+            await context.say(table.help_text(scope="group" if context.message.is_group else "c2c", roles=roles))
 
         @table.command("ping", summary="测活", order=2)
         async def _ping(context) -> None:
@@ -149,7 +136,7 @@ class FapApp:
 
             await context.say("fap " + framework.__version__ + " · 插件 " + str(len(self.plugins.loaded)) + " 个")
 
-        @table.command("reload", summary="热重载某个插件", usage="<插件id>", owner_only=True, order=5)
+        @table.command("reload", summary="热重载某个插件", usage="<插件id>", requires="owner", order=5)
         async def _reload(context) -> None:
             if not context.args:
                 context.fail("用法：/reload <插件id>，可用 " + ", ".join(self.plugins.manifests.keys()))
@@ -159,6 +146,7 @@ class FapApp:
 
     async def start(self, *, connect: bool = True) -> None:
         self.started_at = time.time()
+        self.loop = asyncio.get_running_loop()
         self._register_core_commands()
         await self.events.emit("app.starting", app=self)
         loaded = await self.plugins.load_all(self.config.get("enabled_plugins") or None)
@@ -173,14 +161,23 @@ class FapApp:
         elif connect:
             log.info("connect_qq=false：框架不连 QQ（由插件托管外部机器人）")
 
+    def gui_mode(self) -> str:
+        mode = str(self.config.get("gui_mode", "app") or "app").strip().lower()
+        return mode if mode in ("app", "web") else "app"
+
     async def start_gui(self) -> None:
+        """两种 GUI：app = 原生窗口套壳（tkinter），web = 浏览器控制台。"""
         try:
-            from framework.gui.panel import Panel  # 只有 GUI 版本才 import aiohttp
-        except Exception as error:  # noqa: BLE001 - 没装 aiohttp 就降级成无界面
+            from framework.gui.panel import Panel
+        except Exception as error:  # noqa: BLE001
             log.warning("gui unavailable (%s); running headless", error)
             return
+        # 两种模式都建 Panel：它同时是插件页面注册表
         self.gui = Panel(self)
-        await self.gui.start()
+        if self.gui_mode() == "web":
+            await self.gui.start()
+        else:
+            log.info("gui mode=app：原生窗口由 framework.gui.shell 启动")
 
     async def stop(self) -> None:
         self._running = False
@@ -211,6 +208,8 @@ class FapApp:
         self._stats["errors"] = self._stats.get("errors", 0)
         start = time.time()
         log.info("in %s %s: %r", message.kind, message.sender.short, (message.text or "")[:60])
+        if message.sender.openid:
+            self.members.setdefault(message.conv_key, {})[message.sender.short] = message.sender.openid
         try:
             if not self._allowed(message):
                 return
@@ -264,7 +263,7 @@ class FapApp:
 
     # -- SDK 回调 -----------------------------------------------------------
     async def on_bot_ready(self) -> None:
-        log.info("bot online (owner=%s)", (self._owner_openid or "unclaimed")[-6:])
+        log.info("bot online")
         await self.events.emit("bot.ready", app=self)
 
     async def on_interaction(self, interaction: Any) -> None:
@@ -278,7 +277,7 @@ class FapApp:
             "uptime_s": int(time.time() - self.started_at) if self.started_at else 0,
             "gui": self.gui is not None,
             "connected": getattr(self.bot, "_client", None) is not None,
-            "owner": (self._owner_openid or "")[-6:],
+            "roles": self.permissions.providers(),
             "stats": dict(self._stats),
             "plugins": self.plugins.status(),
             "commands": len(self.commands.unique()),

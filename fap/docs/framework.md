@@ -62,10 +62,27 @@ async def _feed(context):
 |---|---|
 | 回话 | `await context.say("...")` |
 | 取参数 | `context.args`（列表） / `context.raw_args`（原串） |
-| 判断主人 | `context.is_owner` |
+| 判断角色 | `context.has_role("owner")` |
 | 插件配置 | `context.plugin_config()` |
 | 存储目录 | `context.storage_dir` |
 | 主动报错（回给用户） | `context.fail("用法：...")` |
+
+## 3.5 权限（角色）
+
+框架**不认识「主人」**——那是插件的事。框架只提供一张角色注册表：
+
+```python
+ctx.permissions.register(checker, plugin=ctx.id, name="owner")   # 插件声明角色
+ctx.permissions.unregister_plugin(ctx.id)                        # 卸载时自动做
+
+@ctx.command("移交", requires="owner")                            # 命令声明所需角色
+async def _handover(context):
+    if context.has_role("owner"):
+        ...
+```
+
+- 没有任何插件声明某角色时，该角色**一律拒绝**（默认安全）；
+- 内置的 owner_guard 插件负责「主人」这套业务：认领、查看、移交 + 落盘。
 
 ## 4. 事件
 

@@ -160,7 +160,7 @@ function renderCommands(rows){
   }).map(function(c){
     return "<tr><td><code>/" + esc(c.name) + (c.usage ? " " + esc(c.usage) : "") + "</code></td><td>" +
       esc((c.aliases || []).join(", ") || "-") + "</td><td>" + esc(c.summary || "-") + "</td><td>" +
-      esc(c.scope) + (c.owner_only ? " · 主人" : "") + "</td><td><span class='tag'>" + esc(c.plugin) + "</span></td></tr>";
+      esc(c.scope) + (c.requires ? " · 需 " + esc(c.requires) : "") + "</td><td><span class='tag'>" + esc(c.plugin) + "</span></td></tr>";
   }).join("") || '<tr><td colspan="5" class="hint">没有匹配的命令</td></tr>';
 }
 

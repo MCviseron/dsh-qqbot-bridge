@@ -24,7 +24,7 @@ def message(text: str, *, openid: str = "USER1", group: bool = True) -> Message:
         id="M-" + str(abs(hash((text, openid))) % 10**8),
         kind=kind,
         conv_key=conv,
-        sender=Sender(openid=openid, nickname="测试员", is_owner=False),
+        sender=Sender(openid=openid, nickname="测试员"),
         text=text,
         target=Target(kind=kind, openid="GROUP1", conv_key=conv),
     )
@@ -93,7 +93,7 @@ class AppFlowTest(unittest.TestCase):
             self.assertIn("pet_game", joined)
             self.assertIn("/领养", joined)     # help 里能看到插件命令
 
-    def test_rate_limits_and_ownership(self) -> None:
+    def test_role_gate(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             app = self._app(folder)
 
@@ -103,7 +103,7 @@ class AppFlowTest(unittest.TestCase):
                 await app.stop()
 
             asyncio.run(scenario())
-            self.assertIn("这条命令只有主人能用。", app.sent)
+            self.assertIn("这条命令需要「owner」权限。", app.sent)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,6 @@ class Sender:
 
     openid: str
     nickname: str = ""
-    is_owner: bool = False
 
     @property
     def short(self) -> str:

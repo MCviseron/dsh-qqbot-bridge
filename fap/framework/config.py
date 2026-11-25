@@ -23,8 +23,6 @@ DEFAULTS: Dict[str, Any] = {
     # --- 框架行为 ---
     "botname": "机器人",
     "aliases": ["机器人"],
-    "owners": [],                 # 主人 openid 列表（首个发言人自动认领可用 claim_owner）
-    "claim_owner": True,
     "command_prefix": "/",
     "group_enabled": True,
     "c2c_enabled": True,
@@ -40,6 +38,7 @@ DEFAULTS: Dict[str, Any] = {
     "log_dir": "session/logs",
     # --- GUI ---
     "gui": False,
+    "gui_mode": "app",         # app = 原生窗口套壳；web = 浏览器控制台
     "gui_host": "127.0.0.1",
     "gui_port": 39080,
     "gui_token": "",
@@ -165,11 +164,6 @@ class Config:
         self.reload(force=True)
         return self.snapshot()
 
-    def owner_ids(self) -> Iterable[str]:
-        owners = self.get("owners", [])
-        if isinstance(owners, str):
-            owners = [item.strip() for item in owners.split(",") if item.strip()]
-        return [str(item) for item in (owners or []) if str(item).strip()]
 
 
 def config_path(root: Path, name: str = "config.json") -> Path:
