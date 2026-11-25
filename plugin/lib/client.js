@@ -58,7 +58,7 @@ window.__ModuleLoader__.load({
       memberAvatar: { width: 24, height: 24, borderRadius: 999, objectFit: "cover", display: "inline-block" },
       memberName: { color: "var(--dsw-alias-label-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
       memberTail: { color: "var(--dsw-alias-label-tertiary)", fontVariantNumeric: "tabular-nums" },
-      memberList: { maxHeight: 240, overflowY: "scroll", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 },
+      memberList: { maxHeight: 172, overflowY: "scroll", display: "flex", flexDirection: "column", gap: 6, paddingRight: 4 },
       eventList: { maxHeight: 200, overflowY: "scroll", display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 },
       chipRow: { display: "flex", flexWrap: "wrap", gap: 6 },
       chip: { padding: "2px 8px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2)", fontSize: 11, color: "var(--dsw-alias-label-secondary)" },
@@ -705,7 +705,7 @@ window.__ModuleLoader__.load({
                               h("span", { style: T.memberTail }, item.name ? item.tail : ""))
                           })
                         : [h("div", { key: key + "-empty", style: T.hint }, "暂无")])))
-                    if (list.length > 7) {
+                    if (list.length > 5) {
                       rows.push(h("div", { key: key + "-more", style: T.footNote }, "共 " + list.length + " 人 · 上下滚动查看全部"))
                     }
                     return rows
