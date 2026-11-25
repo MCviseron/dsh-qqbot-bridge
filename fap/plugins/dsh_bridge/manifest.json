@@ -1,0 +1,11 @@
+{
+  "id": "dsh_bridge",
+  "name": "QQ ⇄ DSH 桥接",
+  "version": "0.3.0",
+  "description": "把 QQ 会话接到 DeepSeek Harness：托管已有机器人进程，并提供状态/日志/启停命令与面板页。",
+  "entry": "plugin.py",
+  "class_name": "DshBridgePlugin",
+  "requires_gui": false,
+  "default_enabled": true,
+  "author": "MCviseron"
+}

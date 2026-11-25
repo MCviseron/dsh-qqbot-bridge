@@ -1,0 +1,10 @@
+# 运行时数据（配置里有密钥，别提交）
+config.json
+session/
+*.log
+__pycache__/
+*.pyc
+legacy/bot/state/
+legacy/bot/logs/
+legacy/bot/config.json
+legacy/bot/.env

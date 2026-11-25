@@ -1,0 +1,11 @@
+{
+  "id": "pet_game",
+  "name": "群内养成游戏",
+  "version": "1.0.0",
+  "description": "在群里领养一只小宠物：喂食、摸摸、改名、升级、排行；聊天会顺带涨经验。",
+  "entry": "plugin.py",
+  "class_name": "PetGamePlugin",
+  "requires_gui": false,
+  "default_enabled": true,
+  "author": "MCviseron"
+}

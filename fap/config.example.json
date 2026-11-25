@@ -1,0 +1,37 @@
+{
+  "appid": "1906xxxxxx",
+  "appsecret": "xxxxxxxxxxxxxxxxxxxxxxxx",
+  "botname": "蓝色大肥鱼",
+  "aliases": [
+    "大肥鱼",
+    "机器人",
+    "dsh"
+  ],
+  "owners": [],
+  "claim_owner": true,
+  "command_prefix": "/",
+  "group_enabled": true,
+  "c2c_enabled": true,
+  "max_chars": 1500,
+  "connect_qq": false,
+  "gui": false,
+  "gui_host": "127.0.0.1",
+  "gui_port": 39080,
+  "gui_token": "",
+  "plugins_dir": "plugins",
+  "enabled_plugins": [],
+  "state_dir": "session/state",
+  "log_dir": "session/logs",
+  "plugins": {
+    "dsh_bridge": {
+      "legacy_dir": "legacy/bot",
+      "autostart": false,
+      "panel_url": "http://127.0.0.1:39062"
+    },
+    "pet_game": {
+      "feed_cooldown_s": 30,
+      "pat_cooldown_s": 20,
+      "exp_per_level": 50
+    }
+  }
+}
