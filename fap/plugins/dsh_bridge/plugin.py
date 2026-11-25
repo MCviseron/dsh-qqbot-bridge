@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from framework.plugin import Plugin, PluginContext
+from framework.settings import SettingSpec
 
 # 框架侧能自己实现的命令
 FRAMEWORK_COMMANDS = (
@@ -88,6 +89,15 @@ class DshBridgePlugin(Plugin):
     # -- 生命周期 -----------------------------------------------------------
     async def setup(self, ctx: PluginContext) -> None:
         ctx.log.info("dsh_bridge ready (legacy=%s, autostart=%s)", self.legacy_dir(), self.cfg("autostart"))
+        ctx.declare_settings(
+            [
+                SettingSpec("legacy_dir", "旧机器人目录", "text", "legacy/bot", "相对项目根目录"),
+                SettingSpec("autostart", "随框架自动启动", "bool", False, "开启后断开重连会自动拉起"),
+                SettingSpec("python", "解释器路径", "text", "", "留空=当前解释器"),
+                SettingSpec("panel_url", "DSH 面板地址", "text", "http://127.0.0.1:39062"),
+                SettingSpec("log_tail", "日志行数", "int", 12),
+            ]
+        )
         self._register_commands(ctx)
         ctx.on("app.ready", self._on_app_ready)
         ctx.on("app.stopping", self._on_app_stopping)

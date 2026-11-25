@@ -15,6 +15,7 @@
 
 ### 新增
 
+- fap GUI 重做：应用式布局（深色侧栏 + 卡片概览 + 状态栏）、设置页自动生成表单（AppID/AppSecret/白名单…，密钥掩码）、插件主从视图与「命令·设置·页面」三个子页、事件过滤/暂停、日志跟随、插件页面渲染；新增 SettingSpec/SettingsRegistry 与 --gui-shot 截屏验收 (2026-11-26)
 - fap：GUI 改成应用套壳（tkinter 原生窗口：概览/插件/命令/事件/插件页面/日志），新增 --gui-selftest 与 start-*.bat 双击启动；修 aiohttp 访问日志刷屏（access_log=None） (2026-11-26)
 - fap：把主人从框架搬进 owner_guard 插件——框架只保留 PermissionRegistry 角色注册表，命令用 requires=owner 声明，默认拒绝 (2026-11-26)
 - fap GUI：控制台做成应用形态——概览（连接状态/KPI/定时任务）、插件热重载与启停、命令表搜索、实时事件流、配置快照与日志尾部；新增 docs/gui.md 与 --no-connect (2026-11-26)

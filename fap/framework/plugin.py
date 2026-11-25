@@ -78,6 +78,7 @@ class PluginContext:
         self.events: EventBus = app.events
         self.scheduler: Scheduler = app.scheduler
         self.permissions = app.permissions
+        self.settings = app.settings
         self._subscriptions: List[Any] = []
         self._jobs: List[str] = []
 
@@ -126,6 +127,11 @@ class PluginContext:
             order=order,
         )
 
+    # -- 设置声明 -----------------------------------------------------------
+    def declare_settings(self, specs: list) -> None:
+        """把插件的可配置项报给框架，GUI 的「插件 → 设置」子页据此渲染。"""
+        self.settings.register(specs, owner=self.id)
+
     # -- 事件 ---------------------------------------------------------------
     def on(self, event: str, handler, *, priority: int = 0) -> Any:
         subscription = self.events.on(event, handler, plugin=self.id, priority=priority)
@@ -168,6 +174,7 @@ class PluginContext:
         self._jobs.clear()
         self.commands.unregister_plugin(self.id)
         self.permissions.unregister_plugin(self.id)
+        self.settings.unregister_owner(self.id)
         gui = getattr(self.app, "gui", None)
         if gui is not None:
             gui.unregister_plugin(self.id)

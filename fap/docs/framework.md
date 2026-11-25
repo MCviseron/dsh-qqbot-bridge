@@ -84,6 +84,24 @@ async def _handover(context):
 - 没有任何插件声明某角色时，该角色**一律拒绝**（默认安全）；
 - 内置的 owner_guard 插件负责「主人」这套业务：认领、查看、移交 + 落盘。
 
+## 3.6 设置声明
+
+界面不写死：框架与插件各自声明可编辑项，GUI 据此渲染表单。
+
+```python
+from framework.settings import SettingSpec
+
+# 框架侧（app._register_core_settings）
+SettingSpec("appid", "AppID", "text", "")
+SettingSpec("appsecret", "AppSecret", "secret", "")
+
+# 插件侧
+ctx.declare_settings([SettingSpec("feed_cooldown_s", "喂食冷却（秒）", "int", 30)])
+```
+
+保存：`app.save_settings(values, owner="pet_game")` → 写 config.json 的 plugins.pet_game 段，
+并立刻在内存生效。secret 类型在快照里一律打码。
+
 ## 4. 事件
 
 ```python

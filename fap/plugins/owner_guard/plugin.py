@@ -14,6 +14,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from framework.plugin import Plugin, PluginContext
+from framework.settings import SettingSpec
 
 DEFAULTS = {
     "owners": [],             # 显式指定的主人 openid
@@ -69,6 +70,12 @@ class OwnerGuardPlugin(Plugin):
         self._store = ctx.store("owner")
         self.load()
         ctx.permissions.register(self._check_role, plugin=self.id, name="owner")
+        ctx.declare_settings(
+            [
+                SettingSpec("owners", "主人 openid", "list", [], "留空则允许 /认领"),
+                SettingSpec("claim_on_first", "允许认领", "bool", True, "还没有主人时，谁先发 /认领 谁就是主人"),
+            ]
+        )
 
         @ctx.command("认领", summary="认领主人身份（还没有主人时）", order=6)
         async def _claim(context) -> None:

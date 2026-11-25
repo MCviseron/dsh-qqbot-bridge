@@ -24,6 +24,7 @@ from framework.permissions import PermissionRegistry
 from framework.events import EventBus
 from framework.plugin import PluginManager
 from framework.scheduler import Scheduler
+from framework.settings import SettingSpec, SettingsRegistry
 from framework.types import Message, Target
 
 log = fap_logging.get("app")
@@ -56,6 +57,7 @@ class FapApp:
         self.started_at = 0.0
         self._running = False
         self.permissions = PermissionRegistry()
+        self.settings = SettingsRegistry()
         self.members: Dict[str, Dict[str, str]] = {}   # conv_key → {短号: openid}
         self._send_window: Dict[str, list] = {}
         self._stats: Dict[str, int] = {"in": 0, "out": 0, "commands": 0, "errors": 0}
@@ -109,6 +111,46 @@ class FapApp:
         return False
 
     # -- 生命周期 -----------------------------------------------------------
+    def _register_core_settings(self) -> None:
+        """框架自己的设置项：GUI 的「设置」页据此渲染，不用为每个键写界面。"""
+        self.settings.register(
+            [
+                SettingSpec("appid", "AppID", "text", "", "QQ 开放平台的应用 ID"),
+                SettingSpec("appsecret", "AppSecret", "secret", "", "应用密钥（保存后界面只显示掩码）"),
+                SettingSpec("botname", "机器人名字", "text", "机器人", "出现在提示词与卡片里"),
+                SettingSpec("aliases", "别名", "list", [], "以逗号分隔，命中就算在叫它"),
+                SettingSpec("command_prefix", "命令前缀", "text", "/", "例如 / 或 !"),
+                SettingSpec("group_enabled", "群聊开启", "bool", True, "关掉后群里完全不响应"),
+                SettingSpec("c2c_enabled", "私聊开启", "bool", True, "关掉后私聊完全不响应"),
+                SettingSpec("allowlist_groups", "群白名单", "list", [], "留空=不限制；填 group_openid"),
+                SettingSpec("allowlist_c2c", "私聊白名单", "list", [], "留空=不限制；填 user_openid"),
+                SettingSpec("max_chars", "单条上限", "int", 1500, "超长自动分条发送"),
+                SettingSpec("quiet_hours", "静默时段", "text", "", "如 23:30-07:00，只拦闲聊不拦命令"),
+                SettingSpec("rate_limit_per_hour", "每会话每小时上限", "int", 0, "0=不限"),
+                SettingSpec("connect_qq", "连接 QQ", "bool", True, "插件托管外部机器人时应关闭"),
+                SettingSpec("gui_mode", "控制台形态", "choice", "app", "app=原生窗口，web=浏览器", ["app", "web"]),
+            ],
+            owner="",
+        )
+
+    def save_settings(self, values: Dict[str, Any], *, owner: str = "") -> Dict[str, Any]:
+        """按设置声明写配置：框架项写顶层，插件项写 plugins.<id> 段。"""
+        patch: Dict[str, Any] = {}
+        plugin_patch: Dict[str, Any] = {}
+        for spec in self.settings.specs(owner):
+            if spec.key not in values:
+                continue
+            value = spec.coerce(values[spec.key])
+            if owner:
+                plugin_patch[spec.key] = value
+            else:
+                patch[spec.key] = value
+        if plugin_patch:
+            patch["plugins"] = {owner: plugin_patch}
+        if not patch:
+            return self.config.snapshot()
+        return self.config.update(patch)
+
     def _register_core_commands(self) -> None:
         """框架自带的通用命令：/help /ping /plugins /version（不属于任何插件）。"""
         table = self.commands
@@ -148,6 +190,7 @@ class FapApp:
         self.started_at = time.time()
         self.loop = asyncio.get_running_loop()
         self._register_core_commands()
+        self._register_core_settings()
         await self.events.emit("app.starting", app=self)
         loaded = await self.plugins.load_all(self.config.get("enabled_plugins") or None)
         log.info("plugins loaded: %s", ", ".join(loaded) or "(none)")

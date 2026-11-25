@@ -19,6 +19,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from framework.plugin import Plugin, PluginContext
+from framework.settings import SettingSpec
 
 DEFAULTS = {
     "feed_cooldown_s": 30,
@@ -112,6 +113,17 @@ class PetGamePlugin(Plugin):
     # -- 生命周期 -----------------------------------------------------------
     async def setup(self, ctx: PluginContext) -> None:
         self._store = ctx.store("pets")
+        ctx.declare_settings(
+            [
+                SettingSpec("feed_cooldown_s", "喂食冷却（秒）", "int", 30),
+                SettingSpec("pat_cooldown_s", "摸摸冷却（秒）", "int", 20),
+                SettingSpec("chat_coins_cooldown_s", "聊天收益冷却（秒）", "int", 60),
+                SettingSpec("exp_per_level", "每级所需经验", "int", 50),
+                SettingSpec("hunger_per_hour", "每小时饥饿 +", "int", 5),
+                SettingSpec("mood_per_hour", "每小时心情 -", "int", 3),
+                SettingSpec("max_name_len", "名字最大长度", "int", 12),
+            ]
+        )
         self._register_commands(ctx)
         ctx.on("message", self.on_message, priority=300)
         ctx.every("decay", float(self.cfg("decay_interval_s", 3600)), self.decay, run_immediately=False)

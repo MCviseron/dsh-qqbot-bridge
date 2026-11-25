@@ -27,6 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-gui", dest="gui", action="store_false", help="纯命令行（默认）")
     parser.add_argument("--no-connect", dest="connect", action="store_false", help="不连 QQ（只跑框架与控制台）")
     parser.add_argument("--gui-selftest", action="store_true", help="建一遍界面并打印自检结果后退出")
+    parser.add_argument("--gui-shot", default="", help="打开窗口截屏保存到该路径后退出")
+    parser.add_argument("--gui-page", default="dashboard", help="截图前切到哪一页")
     parser.add_argument("--dry-run", action="store_true", help="只加载插件并打印状态")
     parser.add_argument("--list-commands", action="store_true", help="打印命令表后退出")
     parser.set_defaults(gui=None, connect=True)
@@ -72,6 +74,14 @@ def main(argv=None) -> int:
         import os
 
         os.environ["FAP_GUI_MODE"] = "web"
+    if getattr(args, "gui_shot", ""):
+        from framework.gui.shell import AppShell
+
+        root = Path(args.root).resolve()
+        app = FapApp(root, gui=True, config_path=(Path(args.config) if args.config else None))
+        saved = AppShell(app, connect=False).shot(args.gui_shot, page=args.gui_page)
+        print("screenshot:", saved)
+        return 0
     if getattr(args, "gui_selftest", False):
         import json
 
