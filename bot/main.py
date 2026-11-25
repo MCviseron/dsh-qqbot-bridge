@@ -789,8 +789,15 @@ class DSHBot(Client):
         index = getattr(self, "member_index", {}).get(conv_key) or {}
         by_tail = {str(tail).upper(): openid for tail, openid in index.items()}
 
+        kind, _, group_openid = conv_key.partition(":")
+        own_tail = short_id((getattr(self, "_bot_openids", {}) or {}).get(group_openid, "")).upper()
+        own_name = str(getattr(self.config, "botname", "") or "我")
+
         def swap(hit: "re.Match[str]") -> str:
             tail = hit.group(1).upper()
+            if own_tail and tail == own_tail:
+                # @ 的是机器人自己：写名字，别写成陌生群友
+                return "@" + own_name
             openid = by_tail.get(tail, "")
             if not openid:
                 return hit.group(0)
@@ -1045,6 +1052,12 @@ class DSHBot(Client):
         state = dict(state)
         state["_at"] = time.time()
         self.group_state[group_openid] = state
+        member = str(state.get("member_openid") or "")
+        if member:
+            bots = getattr(self, "_bot_openids", None)
+            if bots is None:
+                bots = self._bot_openids = {}
+            bots[group_openid] = member
         return state
 
     async def status_text(self, conv_key: str) -> str:
