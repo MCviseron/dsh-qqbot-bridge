@@ -279,18 +279,38 @@ window.__ModuleLoader__.load({
         catch (error) { setMessage("操作失败") }
         setBusy(false)
       }
-      const CHART_BUCKETS = 60
 
-      function buildSeries(raw, keys, buckets) {
-        const nowSec = Math.floor(Date.now() / 1000)
-        const startSec = Math.floor((nowSec - buckets * 60) / 60) * 60
+      function bucketPlan(range) {
+        const now = Math.floor(Date.now() / 1000)
+        if (range === "today") {
+          const midnight = new Date(now * 1000)
+          midnight.setHours(0, 0, 0, 0)
+          const start = Math.floor(midnight.getTime() / 1000)
+          return { start: start, step: 60, count: Math.min(1440, Math.ceil((now - start) / 60) + 1) }
+        }
+        if (range === "7d") {
+          const step = 30 * 60
+          const start = Math.floor((now - 7 * 86400) / step) * step
+          return { start: start, step: step, count: Math.ceil((now - start) / step) + 1 }
+        }
+        const start = Math.floor((now - 60 * 60) / 60) * 60
+        return { start: start, step: 60, count: 60 }
+      }
+
+      function buildSeries(raw, keys, range) {
+        const plan = bucketPlan(range)
         const byTime = new Map()
-        ;(raw || []).forEach(function (row) { byTime.set(Number(row.t), row) })
-        return Array.from({ length: buckets }, function (_, index) {
-          const t = startSec + index * 60
-          const row = byTime.get(t) || {}
+        ;(raw || []).forEach(function (row) {
+          const bucket = Math.floor(Number(row.t) / plan.step) * plan.step
+          const cell = byTime.get(bucket) || {}
+          keys.forEach(function (key) { cell[key] = (cell[key] || 0) + Number(row[key] || 0) })
+          byTime.set(bucket, cell)
+        })
+        return Array.from({ length: plan.count }, function (_, index) {
+          const t = plan.start + index * plan.step
+          const cell = byTime.get(t) || {}
           const point = { t: t }
-          keys.forEach(function (key) { point[key] = Number(row[key] || 0) })
+          keys.forEach(function (key) { point[key] = Number(cell[key] || 0) })
           return point
         })
       }
@@ -549,7 +569,7 @@ window.__ModuleLoader__.load({
         const logs = dash.logs || {}
         const uptime = Number(dash.uptime_s || 0)
         const human = uptime > 0 ? Math.floor(uptime / 3600) + "h " + Math.floor((uptime % 3600) / 60) + "m" : "—"
-        const points = buildSeries(dash.series, ["c2c_msgs", "group_msgs", "judge_spoke", "streams"], CHART_BUCKETS)
+        const points = buildSeries(dash.series, ["c2c_msgs", "group_msgs", "judge_spoke", "streams"], dashRange)
         const sumKey = function (key) {
           return (points || []).reduce(function (acc, point) { return acc + Number(point[key] || 0) }, 0)
         }
@@ -597,7 +617,7 @@ window.__ModuleLoader__.load({
                 onClick: function () { setDashRange(item[0]) },
               }, item[1])
             }),
-            h("span", { style: T.hint }, dashRange === "hour" ? "内存时序，重启清零" : "读取 state/metrics/*.jsonl，停机也留档")),          chartCard(dashRange === "hour" ? "近 60 分钟活动" : dashRange === "today" ? "今天每分钟活动" : "近 7 天每分钟活动", [
+            h("span", { style: T.hint }, dashRange === "hour" ? "近 60 分钟，按分钟聚合" : "读取 state/metrics/*.jsonl，停机也留档")),          chartCard(dashRange === "hour" ? "近 60 分钟活动" : dashRange === "today" ? "今天每分钟活动" : "近 7 天每 30 分钟活动", [
             { label: "私聊", color: "#2f6bff" },
             { label: "群聊", color: "#22c55e" },
             { label: "开口", color: "#f59e0b" },
