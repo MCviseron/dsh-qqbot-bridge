@@ -125,3 +125,32 @@ python -m framework.cli --gui
 
 `legacy/` 是现有 QQ⇄DSH 项目的**原样副本**（去掉了 state/logs/config）。
 `dsh_bridge` 插件以子进程方式托管它，等框架能力补齐后逐块迁移，详见 `plugins/dsh_bridge/README.md`。
+
+## 10. 已知缺口（框架 v0.1 尚未迁移的能力）
+
+框架是「够用且可扩展」的骨架，不是老机器人的等价重写。下面这些**明确没有**实现，
+避免以后误以为“框架已经支持”：
+
+| 能力 | 现状 | 归属 |
+|---|---|---|
+| 群聊插话判断（judge） | 未迁移 | 应做成独立插件 |
+| C2C 流式输出（stream_messages） | 未迁移 | 框架 sender 能力 |
+| 引用消息解析 / 引用回显 | 未迁移 | 框架（Message.raw 已留位） |
+| 图片下载与转交模型 | 只收集 URL，未下载 | 框架 |
+| 文件发送（send_file） | 未迁移 | 框架 |
+| 审批卡片 / 按钮回调 | 只回执 + 抛 interaction 事件 | 插件 |
+| 群管理（禁言/踢人/二次确认） | 未迁移 | 独立插件 |
+| 表情包库 | 未迁移 | 独立插件 |
+| 消息池 / 冷场判定 / 冷却 | 未迁移 | 插件 |
+| 指标与仪表盘 | 只有 /api/status | 插件或 GUI |
+| 进程托管 | 由 dsh_bridge 以子进程方式提供 | 插件 |
+
+**已经补齐的框架级能力**（这些曾经是缺口）：
+
+- 入站去重：同一 message.id 5 分钟内只处理一次（平台会重投）
+- 被动回复：回复自动带最近一条入站消息的 msg_id，避免“主动消息无权限”
+- Markdown 自动判定：msg_type=2（列表/表格/代码块/粗体才走）
+- 交互回执：按钮点击先 on_interaction_result(code=0) 再抛事件
+- 主人落盘：认领后写 session/state/framework.json，重启不丢
+- 静默时段：quiet_hours 只拦闲聊，命令照常
+- 限流：rate_limit_per_hour 按会话计，超出丢弃并记 warning

@@ -52,12 +52,14 @@ python tests/run_tests.py                # 自测
 配置文件默认 `fap/config.json`（参考 `config.example.json`），也可用 `--config` 指定；
 任意键都能被环境变量 `FAP_<KEY>` 覆盖，例如 `FAP_GUI_PORT=39090`。
 
-## 命令表（框架 + 两个插件，共 13 条）
+## 命令表（框架 + 两个插件，共 29 条）
 
 ```
-/help  /ping  /plugins  /version  /reload <插件id>      ← 框架自带
-/dsh [status|start|stop|restart|logs|panel]  /dsh-log    ← dsh_bridge
-/领养 <名字>  /宠物  /喂食  /摸摸  /改名 <名字>  /排行     ← pet_game
+/help  /ping  /plugins  /version  /reload <插件id>            ← 框架自带（5）
+/状态  /日志 [行数]  /面板  /dsh [status|start|stop|...]      ← dsh_bridge 框架侧（4）
+/绑定 /重置 /分组 /菜单 /pr /链接 /截图 /窗口 /会话 /切会话
+/切回 /花费 /撤回 /消息池                                    ← dsh_bridge 旧机器人专有（14）
+/领养 <名字>  /宠物  /喂食  /摸摸  /改名 <名字>  /排行         ← pet_game（6）
 ```
 
 ## 文档

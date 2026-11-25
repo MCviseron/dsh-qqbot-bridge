@@ -34,6 +34,11 @@ class PluginManagerTest(unittest.TestCase):
                 names = {command.name for command in app.commands.unique()}
                 self.assertIn("dsh", names)
                 self.assertIn("领养", names)
+                # dsh_bridge 必须把旧机器人的命令也登记进来（不漏）
+                bridge_commands = {c.name for c in app.commands.unique() if c.plugin == "dsh_bridge"}
+                for expected in ("状态", "日志", "面板", "分组", "截图", "撤回", "消息池", "绑定"):
+                    self.assertIn(expected, bridge_commands)
+                self.assertGreaterEqual(len(bridge_commands), 16)
                 await app.plugins.unload_all()
                 return loaded, {command.name for command in app.commands.unique()}
 

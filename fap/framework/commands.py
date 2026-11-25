@@ -86,6 +86,7 @@ class Command:
 
 
 _TOKEN_RE = re.compile(r"\s+")
+_LEAD_MENTION_RE = re.compile(r"^(?:@\S+\s+)+")
 
 
 class CommandTable:
@@ -168,6 +169,8 @@ class CommandTable:
     def resolve(self, text: str) -> Optional[Tuple[Command, List[str], str]]:
         """把一段文本解析成 (命令, 参数, 原始参数字符串)；不是命令返回 None。"""
         stripped = str(text or "").strip()
+        # 群里必须先 @机器人：「@蓝色大肥鱼 /ping」里的命令在第二段
+        stripped = _LEAD_MENTION_RE.sub("", stripped)
         if not stripped.startswith(self.prefix):
             return None
         body = stripped[len(self.prefix):].strip()
@@ -183,8 +186,8 @@ class CommandTable:
         return command, rest, raw
 
     def help_text(self, *, scope: str = "both", is_owner: bool = False, plugin: str = "") -> str:
-        lines: List[str] = []
-        current = None
+        """按插件分组输出；同一插件的命令一定连在一起（不受 order 影响）。"""
+        groups: Dict[str, List[Command]] = {}
         for command in self.unique():
             if command.hidden:
                 continue
@@ -194,13 +197,13 @@ class CommandTable:
                 continue
             if command.owner_only and not is_owner:
                 continue
-            if command.plugin != current:
-                current = command.plugin
-                title = current or "框架"
-                lines.append("")
-                lines.append("【" + title + "】")
-            lines.append("  " + command.help_line(self.prefix))
-        return ("\n".join(lines).strip() or "（没有可用的命令）")
+            groups.setdefault(command.plugin, []).append(command)
+        blocks: List[str] = []
+        for plugin_id, commands in groups.items():
+            title = plugin_id or "框架"
+            body = "\n".join("  " + item.help_line(self.prefix) for item in commands)
+            blocks.append("【" + title + "】\n" + body)
+        return "\n\n".join(blocks) or "（没有可用的命令）"
 
     # -- 派发 ---------------------------------------------------------------
     async def dispatch(self, app: Any, message: Message) -> Any:
@@ -222,13 +225,13 @@ class CommandTable:
             result = command.handler(context)
             if inspect.isawaitable(result):
                 result = await result
-            return result
         except CommandError as error:
             await app.send(message.target, str(error))
         except Exception as error:  # noqa: BLE001 - 单个命令炸掉不能拖垮框架
             app.logger.exception("command %s failed: %s", command.name, error)
             await app.send(message.target, "命令执行出错：" + type(error).__name__)
-        return None
+        # 命中即算处理过（处理函数多半没有返回值）
+        return True
 
 
 def split_args(raw: str) -> List[str]:

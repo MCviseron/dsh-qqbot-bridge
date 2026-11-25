@@ -60,6 +60,18 @@ class CommandTableTest(unittest.TestCase):
         asyncio.run(self.table.dispatch(self.app, make_message("/feed 一点点 加餐")))
         self.assertEqual(seen, [["一点点", "加餐"]])
 
+    def test_command_after_at_mention(self) -> None:
+        """群里必须先 @机器人，命令出现在第二段也要能命中。"""
+        seen = []
+
+        @self.table.command("ping")
+        async def _ping(ctx):
+            seen.append(ctx.raw_args or "no-args")
+
+        asyncio.run(self.table.dispatch(self.app, make_message("@群友ABCDEF /ping")))
+        asyncio.run(self.table.dispatch(self.app, make_message("@蓝色大肥鱼 @群友ABCDEF /ping 加餐")))
+        self.assertEqual(seen, ["no-args", "加餐"])
+
     def test_unknown_command_returns_none(self) -> None:
         self.assertIsNone(self.table.resolve("/nope"))
         self.assertIsNone(self.table.resolve("没有斜杠"))

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from framework.logging import get
@@ -28,6 +29,23 @@ def clean_text(raw: Optional[str]) -> str:
     return " ".join(text.split()).strip()
 
 
+FENCE = chr(96) * 3
+
+
+def looks_like_markdown(text: str) -> bool:
+    """粗略判断要不要用 msg_type=2（Markdown）发送。"""
+    body = str(text or "")
+    if FENCE in body:
+        return True
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("# ", "## ", "### ", "- ", "* ", "|")):
+            return True
+        if re.match(r"^\d+\.\s", stripped):
+            return True
+    return "**" in body or "](" in body
+
+
 class QQBot:
     """包一层 SDK 的 Client；框架其它部分不直接碰 SDK。"""
 
@@ -35,14 +53,22 @@ class QQBot:
         self.app = app
         self._client: Any = None
         self._ready = asyncio.Event()
+        self._seen: Dict[str, float] = {}          # 入站去重（同一 message.id 重投）
+        self._last_msg_id: Dict[str, str] = {}      # 被动回复用：最近一条入站消息 id
+        self._msg_seq = 0
 
     # -- 生命周期 -----------------------------------------------------------
     def _build_client(self) -> Any:
-        from viseron_qqbotpy import Client  # 延迟 import：离线环境也能导入框架
+        # 延迟 import：离线环境也能导入框架
+        from viseron_qqbotpy import Client, Intents
 
         app = self.app
 
         class _Client(Client):
+            def __init__(self) -> None:
+                # SDK 要求 intents：默认即可订阅群/私聊消息与交互事件
+                super().__init__(Intents.default())
+
             async def on_ready(client_self) -> None:  # noqa: N805 - SDK 约定
                 self._ready.set()
                 await app.on_bot_ready()
@@ -54,6 +80,13 @@ class QQBot:
                 await self._dispatch(message, kind="c2c")
 
             async def on_interaction_create(client_self, interaction) -> None:  # noqa: N805
+                # 平台要求几秒内回执，否则客户端会把按钮数据当文本重发
+                try:
+                    api_handle = getattr(client_self, "api", None)
+                    if api_handle is not None:
+                        await api_handle.on_interaction_result(interaction_id=interaction.id, code=0)
+                except Exception as error:  # noqa: BLE001 - 回执失败不影响业务
+                    log.warning("interaction ack failed: %s", error)
                 await app.on_interaction(interaction)
 
         return _Client()
@@ -80,7 +113,21 @@ class QQBot:
             return
         if normalized is None:
             return
+        if self._is_duplicate(normalized.id):
+            log.info("duplicate event ignored: %s", normalized.id)
+            return
+        self._last_msg_id[normalized.conv_key] = normalized.id
         await self.app.on_message(normalized)
+
+    def _is_duplicate(self, message_id: str) -> bool:
+        """平台重投同一个事件时，5 分钟内的同 id 只处理一次。"""
+        now = time.time()
+        for key in [key for key, seen in self._seen.items() if now - seen > 300]:
+            self._seen.pop(key, None)
+        if message_id in self._seen:
+            return True
+        self._seen[message_id] = now
+        return False
 
     def _normalize(self, message: Any, *, kind: str) -> Optional[Message]:
         message_id = str(getattr(message, "id", "") or "")
@@ -136,18 +183,28 @@ class QQBot:
             return None
         api = getattr(self._client, "api", None)
         if api is None:
+            log.warning("api not ready; dropping outbound to %s", target.conv_key)
             return None
         chunks = self.split(text, int(self.app.config.get("max_chars", 1500)))
+        msg_id = self._last_msg_id.get(target.conv_key, "")
         results = []
         for index, chunk in enumerate(chunks):
-            payload: Dict[str, Any] = {"msg_type": 0, "content": chunk, "msg_seq": index + 1}
+            self._msg_seq += 1
+            payload: Dict[str, Any] = {"msg_type": 0, "content": chunk, "msg_seq": self._msg_seq}
+            if msg_id:
+                payload["msg_id"] = msg_id
             if keyboard is not None and index == len(chunks) - 1:
                 payload["keyboard"] = keyboard
+            if keyboard is not None or looks_like_markdown(chunk):
+                payload.pop("content", None)
+                payload["msg_type"] = 2
+                payload["markdown"] = {"content": chunk}
             try:
                 if target.kind == "group":
                     results.append(await api.post_group_message(group_openid=target.openid, **payload))
                 else:
                     results.append(await api.post_c2c_message(openid=target.openid, **payload))
+                log.info("sent %d chars to %s", len(chunk), target.conv_key)
             except Exception as error:  # noqa: BLE001 - 发送失败只记日志
                 log.warning("send failed (%s): %s", target.conv_key, error)
         return results[-1] if results else None

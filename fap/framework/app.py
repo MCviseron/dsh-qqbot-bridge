@@ -20,6 +20,7 @@ from framework import logging as fap_logging
 from framework.bot import QQBot
 from framework.commands import CommandTable
 from framework.config import Config
+from framework.storage import JsonStore
 from framework.events import EventBus
 from framework.plugin import PluginManager
 from framework.scheduler import Scheduler
@@ -53,7 +54,11 @@ class FapApp:
         self.gui: Any = None
         self.started_at = 0.0
         self._running = False
-        self._owner_openid = str((self.config.get("owners") or [""])[0]) if self.config.get("owners") else ""
+        self._frame_store = JsonStore(self.state_dir / "framework.json", {"owner": ""})
+        stored_owner = str(self._frame_store.get("owner", "") or "")
+        configured = list(self.config.owner_ids())
+        self._owner_openid = configured[0] if configured else stored_owner
+        self._send_window: Dict[str, list] = {}
         self._stats: Dict[str, int] = {"in": 0, "out": 0, "commands": 0, "errors": 0}
 
     # -- 路径 ---------------------------------------------------------------
@@ -68,6 +73,42 @@ class FapApp:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    # -- 策略 ---------------------------------------------------------------
+    def in_quiet_hours(self) -> bool:
+        """支持 "23:30-07:00" 这种跨零点区间；留空表示不启用。"""
+        raw = str(self.config.get("quiet_hours", "") or "").strip()
+        if not raw or "-" not in raw:
+            return False
+        try:
+            start_text, end_text = raw.split("-", 1)
+            start_h, start_m = [int(part) for part in start_text.strip().split(":")]
+            end_h, end_m = [int(part) for part in end_text.strip().split(":")]
+        except ValueError:
+            log.warning("bad quiet_hours: %r", raw)
+            return False
+        now = time.localtime()
+        minutes = now.tm_hour * 60 + now.tm_min
+        start = start_h * 60 + start_m
+        end = end_h * 60 + end_m
+        if start == end:
+            return False
+        if start < end:
+            return start <= minutes < end
+        return minutes >= start or minutes < end
+
+    def _rate_limited(self, conv_key: str) -> bool:
+        limit = int(self.config.get("rate_limit_per_hour", 0) or 0)
+        if limit <= 0:
+            return False
+        now = time.time()
+        window = [stamp for stamp in self._send_window.get(conv_key, []) if now - stamp < 3600]
+        if len(window) >= limit:
+            self._send_window[conv_key] = window
+            return True
+        window.append(now)
+        self._send_window[conv_key] = window
+        return False
+
     # -- 主人 ---------------------------------------------------------------
     def is_owner(self, openid: str) -> bool:
         if not openid:
@@ -76,7 +117,8 @@ class FapApp:
             return True
         if not self._owner_openid and self.config.get("claim_owner", True):
             self._owner_openid = openid
-            log.info("owner claimed by first message: %s", openid[-6:])
+            self._frame_store.set("owner", openid)
+            log.info("owner claimed by first message: %s（已落盘）", openid[-6:])
             return True
         return openid == self._owner_openid
 
@@ -168,12 +210,17 @@ class FapApp:
         self._stats["in"] += 1
         self._stats["errors"] = self._stats.get("errors", 0)
         start = time.time()
+        log.info("in %s %s: %r", message.kind, message.sender.short, (message.text or "")[:60])
         try:
             if not self._allowed(message):
                 return
+            is_command = self.commands.resolve(message.text) is not None
+            if not is_command and self.in_quiet_hours():
+                log.info("quiet hours: chatter suppressed in %s", message.conv_key)
+                return
             await self.events.emit("message", app=self, message=message)
             handled = await self.commands.dispatch(self, message)
-            if handled is not None:
+            if handled:
                 self._stats["commands"] += 1
                 return
             await self.events.emit("message.unhandled", app=self, message=message)
@@ -204,6 +251,9 @@ class FapApp:
     # -- 出站 ---------------------------------------------------------------
     async def send(self, target: Target, text: str, **kwargs: Any) -> Any:
         if not str(text or "").strip():
+            return None
+        if self._rate_limited(target.conv_key):
+            log.warning("rate limit hit in %s; outbound dropped", target.conv_key)
             return None
         self._stats["out"] += 1
         await self.events.emit("outbound", app=self, target=target, text=text)
