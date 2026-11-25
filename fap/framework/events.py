@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List
 
@@ -29,8 +30,11 @@ class EventBus:
     支持通配 "*"，按 priority 升序调用；单个处理器异常只记日志，不影响其它订阅者。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, history: int = 200) -> None:
         self._subs: List[Subscription] = []
+        self._history_limit = max(0, int(history))
+        self._history: List[Dict[str, Any]] = []
+        self._seq = 0
 
     def on(
         self,
@@ -55,10 +59,35 @@ class EventBus:
         self._subs = [item for item in self._subs if item.plugin != plugin]
         return before - len(self._subs)
 
+    def _record(self, event: str, payload: Dict[str, Any]) -> None:
+        """只留“能展示”的摘要：不存 Message 之类的对象，GUI 才不会炸。"""
+        if self._history_limit <= 0:
+            return
+        self._seq += 1
+        summary: Dict[str, Any] = {"seq": self._seq, "at": time.time(), "event": event}
+        for key, value in payload.items():
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                summary[key] = value
+            elif key == "message":
+                summary["convKey"] = getattr(value, "conv_key", "")
+                summary["text"] = str(getattr(value, "text", ""))[:80]
+                sender = getattr(value, "sender", None)
+                summary["sender"] = getattr(sender, "display", "") if sender is not None else ""
+            elif key == "target":
+                summary["convKey"] = getattr(value, "conv_key", "")
+        self._history.append(summary)
+        if len(self._history) > self._history_limit:
+            del self._history[: len(self._history) - self._history_limit]
+
+    def history(self, since: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        rows = [row for row in self._history if int(row.get("seq", 0)) > int(since)]
+        return rows[-limit:]
+
     def handlers(self, event: str) -> List[Subscription]:
         return [item for item in self._subs if item.event in (event, "*")]
 
     async def emit(self, event: str, **payload: Any) -> List[Any]:
+        self._record(event, payload)
         results: List[Any] = []
         for subscription in list(self.handlers(event)):
             try:

@@ -10,7 +10,7 @@
 | 版本 | 启动方式 | 适用 |
 |---|---|---|
 | **非 GUI（本项目用法）** | `python -m framework.cli --no-gui` | 服务器 / 后台常驻，不装 aiohttp 也能跑 |
-| **GUI** | `python -m framework.cli --gui` | 本地调试，多一个 Web 面板看状态、插件页 |
+| **GUI** | `python -m framework.cli --gui` | 像应用一样的本地控制台：机器人状态、插件启停/热重载、命令表、事件流、日志 |
 
 两个版本共用同一份 `framework/` 与同一批插件；GUI 只是额外加载 `framework/gui/`。
 
@@ -65,6 +65,7 @@ python tests/run_tests.py                # 自测
 ## 文档
 
 - [框架使用文档](docs/framework.md)
+- [GUI 控制台](docs/gui.md)
 - [插件开发指南](docs/plugin-dev.md)
 - [内置插件说明](docs/plugins.md)
 

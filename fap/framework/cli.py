@@ -2,7 +2,8 @@
 
     python -m framework.cli --no-gui          # 非 GUI（本项目用法）
     python -m framework.cli --gui             # GUI 版本（额外起本地面板）
-    python -m framework.cli --dry-run         # 只加载插件并打印状态，不连 QQ
+    python -m framework.cli --gui             # GUI 版本（浏览器打开 http://127.0.0.1:39080/）
+    python -m framework.cli --gui --no-connect  # 只开控制台，不连 QQ（本地看界面）
 """
 
 from __future__ import annotations
@@ -22,9 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default="", help="配置文件路径（默认 <root>/config.json）")
     parser.add_argument("--gui", dest="gui", action="store_true", help="启用 GUI 面板")
     parser.add_argument("--no-gui", dest="gui", action="store_false", help="纯命令行（默认）")
+    parser.add_argument("--no-connect", dest="connect", action="store_false", help="不连 QQ（只跑框架与控制台）")
     parser.add_argument("--dry-run", action="store_true", help="只加载插件并打印状态")
     parser.add_argument("--list-commands", action="store_true", help="打印命令表后退出")
-    parser.set_defaults(gui=None)
+    parser.set_defaults(gui=None, connect=True)
     return parser
 
 
@@ -36,7 +38,8 @@ async def _run(args: argparse.Namespace) -> int:
         gui=gui,
         config_path=(Path(args.config) if args.config else None),
     )
-    await app.start(connect=not (args.dry_run or args.list_commands))
+    connect = bool(args.connect) and not (args.dry_run or args.list_commands)
+    await app.start(connect=connect)
     if args.list_commands:
         print(app.commands.help_text(scope="both", is_owner=True))
         await app.stop()

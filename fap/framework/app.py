@@ -277,6 +277,7 @@ class FapApp:
             "version": __import__("framework").__version__,
             "uptime_s": int(time.time() - self.started_at) if self.started_at else 0,
             "gui": self.gui is not None,
+            "connected": getattr(self.bot, "_client", None) is not None,
             "owner": (self._owner_openid or "")[-6:],
             "stats": dict(self._stats),
             "plugins": self.plugins.status(),

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fap 控制台</title>
+<style>
+:root{
+  --bg:var(--dsw-alias-bg-base,#f6f7f9);--layer:#fff;--line:#e3e6ea;
+  --text:#1b1d21;--muted:#7b828c;--accent:#2f6bff;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#14161a;--layer:#1c1f25;--line:#2a2f37;--text:#e8eaed;--muted:#98a0aa;}
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--layer);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+main{display:grid;grid-template-columns:190px 1fr;gap:16px;padding:16px;max-width:1180px;margin:0 auto}
+nav{display:flex;flex-direction:column;gap:4px}
+nav button{text-align:left;padding:9px 12px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--text);cursor:pointer;font:inherit}
+nav button:hover{background:var(--layer)}
+nav button.active{background:var(--layer);border-color:var(--line);font-weight:600}
+section{display:none}
+section.active{display:block}
+.card{background:var(--layer);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.card h2{margin:0 0 10px;font-size:13px;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .k{font-size:12px;color:var(--muted)}
+.kpi .v{font-size:20px;font-weight:600;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{color:var(--muted);font-weight:500;font-size:12px}
+code{background:rgba(127,127,127,.12);padding:1px 5px;border-radius:4px;font-size:12px}
+button.act{padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:var(--layer);color:var(--text);cursor:pointer;font-size:12px}
+button.act:hover{border-color:var(--accent);color:var(--accent)}
+button.act.warn:hover{border-color:var(--bad);color:var(--bad)}
+.tag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+.events{max-height:420px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.events div{padding:3px 0;border-bottom:1px dashed var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+pre{max-height:420px;overflow:auto;font-size:12px;background:rgba(127,127,127,.08);padding:10px;border-radius:8px}
+.hint{color:var(--muted);font-size:12px}
+input.search{width:100%;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--layer);color:var(--text);font:inherit;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>fap 控制台</h1>
+  <span class="pill"><span class="dot" id="dotBot"></span><span id="botState">连接中…</span></span>
+  <span class="pill" id="verPill">v-</span>
+  <span class="pill" id="upPill">uptime -</span>
+  <span class="pill" id="ownerPill">主人 -</span>
+  <span class="pill" id="plugPill">插件 -</span>
+</header>
+<main>
+  <nav>
+    <button data-tab="overview" class="active">概览</button>
+    <button data-tab="plugins">插件</button>
+    <button data-tab="commands">命令</button>
+    <button data-tab="events">事件</button>
+    <button data-tab="settings">设置 / 日志</button>
+  </nav>
+  <div>
+    <section id="overview" class="active">
+      <div class="card"><h2>机器人</h2><div class="grid" id="kpis"></div></div>
+      <div class="card"><h2>运行中的定时任务</h2><table><thead><tr><th>任务</th><th>执行次数</th><th>错误</th></tr></thead><tbody id="jobs"></tbody></table></div>
+      <div class="card"><h2>插件页面</h2><div id="pages" class="hint">（没有插件注册页面）</div></div>
+    </section>
+
+    <section id="plugins">
+      <div class="card"><h2>插件（可热重载 / 启停）</h2>
+        <table><thead><tr><th>id</th><th>名称</th><th>版本</th><th>命令</th><th>状态</th><th>操作</th></tr></thead><tbody id="pluginRows"></tbody></table>
+        <p class="hint">热操作直接作用于当前进程；重启后按 config.json 的 enabled_plugins（空=全部）重新装配。</p>
+      </div>
+    </section>
+
+    <section id="commands">
+      <div class="card"><h2>命令表</h2><input class="search" id="cmdSearch" placeholder="搜索命令 / 插件 / 说明">
+        <table><thead><tr><th>命令</th><th>别名</th><th>说明</th><th>范围</th><th>插件</th></tr></thead><tbody id="cmdRows"></tbody></table>
+      </div>
+    </section>
+
+    <section id="events">
+      <div class="card"><h2>事件流（框架内部 EventBus，最近 120 条）</h2><div class="events" id="eventRows"></div></div>
+    </section>
+
+    <section id="settings">
+      <div class="card"><h2>配置快照（密钥已打码）</h2><pre id="cfgBox">读取中…</pre></div>
+      <div class="card"><h2>日志尾部</h2><pre id="logBox">读取中…</pre></div>
+    </section>
+  </div>
+</main>
+<script>
+var TOKEN = new URLSearchParams(location.search).get("token") || "";
+function api(path, options){
+  var url = path + (TOKEN ? (path.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : "");
+  return fetch(url, options || {}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(text){ return String(text == null ? "" : text).replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
+function fmtUptime(s){ s = Math.max(0, Math.floor(s || 0)); if (s < 60) return s + " 秒"; if (s < 3600) return Math.floor(s/60) + " 分"; return Math.floor(s/3600) + " 时 " + Math.floor((s%3600)/60) + " 分"; }
+
+var state = { plugins: [], commands: [], lastSeq: 0, filter: "" };
+
+function renderStatus(st){
+  el("dotBot").className = "dot " + (st.connected ? "ok" : "bad");
+  el("botState").textContent = (st.connected ? "QQ 已连接" : "QQ 未连接") + (st.uptime_s > 0 ? "" : " · 未启动");
+  el("verPill").textContent = "v" + st.version + (st.gui ? " · GUI" : " · 无界面");
+  el("upPill").textContent = "uptime " + fmtUptime(st.uptime_s);
+  el("ownerPill").textContent = "主人 " + (st.owner || "-");
+  el("plugPill").textContent = "插件 " + (st.plugins || []).filter(function(p){ return p.loaded; }).length + "/" + (st.plugins || []).length;
+  var kpis = [
+    ["收到消息", st.stats.in], ["发出回复", st.stats.out],
+    ["命令执行", st.stats.commands], ["错误", st.stats.errors],
+    ["命令总数", st.commands], ["定时任务", (st.jobs||[]).length]
+  ];
+  el("kpis").innerHTML = kpis.map(function(row){
+    return '<div class="kpi"><div class="k">' + esc(row[0]) + '</div><div class="v">' + esc(row[1]) + '</div></div>';
+  }).join("");
+  el("jobs").innerHTML = (st.jobs || []).map(function(job){
+    return "<tr><td><code>" + esc(job.name) + "</code></td><td>" + esc(job.runs) + "</td><td>" + esc(job.errors) + "</td></tr>";
+  }).join("") || '<tr><td colspan="3" class="hint">没有定时任务</td></tr>';
+  var pages = st.pages || [];
+  el("pages").innerHTML = pages.length ? pages.map(function(p){
+    return '<a href="/api/pages/' + encodeURIComponent(p.key) + (TOKEN ? "?token=" + encodeURIComponent(TOKEN) : "") + '" target="_blank">' + esc(p.title) + '</a>';
+  }).join(" · ") : "（没有插件注册页面）";
+}
+
+function renderPlugins(rows){
+  state.plugins = rows;
+  el("pluginRows").innerHTML = rows.map(function(p){
+    var actions = p.loaded
+      ? '<button class="act" data-act="reload" data-id="' + esc(p.id) + '">重载</button> <button class="act warn" data-act="disable" data-id="' + esc(p.id) + '">卸载</button>'
+      : '<button class="act" data-act="enable" data-id="' + esc(p.id) + '">加载</button>';
+    return "<tr><td><code>" + esc(p.id) + "</code></td><td>" + esc(p.name) + "</td><td>" + esc(p.version) +
+      "</td><td>" + esc(p.commands) + "</td><td>" + (p.loaded ? "✅ 已加载" : "— 未加载") + "</td><td>" + actions + "</td></tr>";
+  }).join("");
+  Array.prototype.forEach.call(document.querySelectorAll("#pluginRows button"), function(btn){
+    btn.onclick = function(){
+      var id = btn.getAttribute("data-id"), act = btn.getAttribute("data-act");
+      btn.disabled = true;
+      api("/api/plugins/" + encodeURIComponent(id) + "/" + act, { method: "POST" }).then(function(res){
+        if (res.ok) { renderPlugins(res.plugins); refreshStatus(); } else { alert("操作失败：" + (res.error || "")); }
+        btn.disabled = false;
+      }).catch(function(err){ alert("请求失败：" + err); btn.disabled = false; });
+    };
+  });
+}
+
+function renderCommands(rows){
+  state.commands = rows;
+  var filter = (state.filter || "").toLowerCase();
+  el("cmdRows").innerHTML = rows.filter(function(c){
+    if (!filter) return true;
+    return (c.name + " " + c.plugin + " " + c.summary + " " + (c.aliases||[]).join(",")).toLowerCase().indexOf(filter) >= 0;
+  }).map(function(c){
+    return "<tr><td><code>/" + esc(c.name) + (c.usage ? " " + esc(c.usage) : "") + "</code></td><td>" +
+      esc((c.aliases || []).join(", ") || "-") + "</td><td>" + esc(c.summary || "-") + "</td><td>" +
+      esc(c.scope) + (c.owner_only ? " · 主人" : "") + "</td><td><span class='tag'>" + esc(c.plugin) + "</span></td></tr>";
+  }).join("") || '<tr><td colspan="5" class="hint">没有匹配的命令</td></tr>';
+}
+
+function renderEvents(rows){
+  var box = el("eventRows");
+  if (!rows.length) { if (!box.innerHTML) box.innerHTML = '<div class="hint">（还没有事件）</div>'; return; }
+  var html = rows.map(function(row){
+    var when = new Date(row.at * 1000).toLocaleTimeString();
+    var extra = row.convKey ? (" · " + row.convKey.slice(-8) + (row.text ? "：" + row.text : "")) : "";
+    return "<div>" + when + " · <b>" + esc(row.event) + "</b>" + esc(extra) + "</div>";
+  }).join("");
+  box.innerHTML = html + box.innerHTML;
+  state.lastSeq = Math.max.apply(null, rows.map(function(r){ return r.seq; }).concat([state.lastSeq]));
+  while (box.childNodes.length > 200) box.removeChild(box.lastChild);
+}
+
+function refreshStatus(){
+  api("/api/status").then(renderStatus).catch(function(){ el("botState").textContent = "连不上控制台"; });
+}
+function refreshPlugins(){ api("/api/plugins").then(renderPlugins).catch(function(){}); }
+function refreshCommands(){ api("/api/commands").then(renderCommands).catch(function(){}); }
+function refreshEvents(){
+  api("/api/events?since=" + state.lastSeq).then(function(res){ if (res.ok) renderEvents(res.events || []); }).catch(function(){});
+}
+function refreshLogs(){
+  api("/api/logs?lines=120").then(function(res){ el("logBox").textContent = (res.lines || []).join("\n"); }).catch(function(){});
+}
+function refreshConfig(){
+  api("/api/config").then(function(res){
+    var cfg = res.config || {};
+    delete cfg.appsecret; delete cfg.token; delete cfg.gui_token;
+    el("cfgBox").textContent = JSON.stringify(cfg, null, 2);
+  }).catch(function(){});
+}
+
+document.querySelectorAll("nav button").forEach(function(btn){
+  btn.onclick = function(){
+    document.querySelectorAll("nav button").forEach(function(other){ other.classList.remove("active"); });
+    document.querySelectorAll("section").forEach(function(sec){ sec.classList.remove("active"); });
+    btn.classList.add("active");
+    el(btn.getAttribute("data-tab")).classList.add("active");
+    if (btn.getAttribute("data-tab") === "plugins") refreshPlugins();
+    if (btn.getAttribute("data-tab") === "commands") refreshCommands();
+    if (btn.getAttribute("data-tab") === "events") refreshEvents();
+    if (btn.getAttribute("data-tab") === "settings") { refreshConfig(); refreshLogs(); }
+  };
+});
+el("cmdSearch").oninput = function(){ state.filter = this.value; renderCommands(state.commands); };
+
+refreshStatus(); refreshPlugins(); refreshCommands();
+setInterval(refreshStatus, 3000);
+setInterval(refreshEvents, 2000);
+setInterval(function(){ if (el("settings").classList.contains("active")) refreshLogs(); }, 5000);
+</script>
+</body>
+</html>
