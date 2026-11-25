@@ -195,6 +195,8 @@ def load_config() -> Config:
 # small helpers
 # --------------------------------------------------------------------------- #
 # QQ 把表情/图片/按钮等编码成这种内联标签，喂给模型前先清掉
+MENTION_RE = re.compile(r"<@!?([0-9A-Za-z_-]{8,})>")
+QAT_USER_RE = re.compile(r"<qqbot-at-user[^>]*?\bid=\"([^\"]+)\"[^>]*>", re.IGNORECASE)
 INLINE_TAG = re.compile(r"<(?:faceType|img|qqbot-cmd-enter|qqbot-at-user|emoji)[^>]*>", re.IGNORECASE)
 
 
@@ -212,10 +214,10 @@ def _author_nick(message: Any) -> str:
 
 
 def clean_content(content: Optional[str]) -> str:
-    """Strip @bot markup, inline QQ tags, and surrounding whitespace."""
+    """Normalise inbound text: keep WHO was @-ed, drop only the noisy tags."""
     text = (content or "").strip()
-    while text.startswith("<@") and ">" in text:
-        text = text.split(">", 1)[1].lstrip()
+    text = MENTION_RE.sub(lambda hit: "@群友" + short_id(hit.group(1)).upper(), text)
+    text = QAT_USER_RE.sub(lambda hit: "@群友" + short_id(hit.group(1)).upper(), text)
     text = INLINE_TAG.sub("", text)
     return " ".join(text.split()).strip()
 
@@ -780,6 +782,22 @@ class DSHBot(Client):
                 if message_id not in live:
                     self.pool_idx.pop(idx, None)
 
+    def _humanize_mentions(self, conv_key: str, text: str) -> str:
+        """@群友622C23 → @真实昵称，让判断/转录看得出来这次在跟谁说话。"""
+        if "@群友" not in text:
+            return text
+        index = getattr(self, "member_index", {}).get(conv_key) or {}
+        by_tail = {str(tail).upper(): openid for tail, openid in index.items()}
+
+        def swap(hit: "re.Match[str]") -> str:
+            tail = hit.group(1).upper()
+            openid = by_tail.get(tail, "")
+            if not openid:
+                return hit.group(0)
+            return "@" + self._display_name(conv_key, openid)
+
+        return re.sub(r"@群友([0-9A-F]{6})", swap, text)
+
     def _pool_incoming(self, message: Any, kind: str, openid: str, conv_key: str, author: str) -> None:
         message_id = str(getattr(message, "id", "") or "")
         if not message_id:
@@ -796,7 +814,7 @@ class DSHBot(Client):
                 kind=kind,
                 openid=openid,
                 author=author or "群友",
-                text=clean_content(getattr(message, "content", ""))[:60],
+                text=self._humanize_mentions(conv_key, clean_content(getattr(message, "content", "")))[:60],
                 outbound=False,
                 at=time.time(),
                 idx=self._message_idx(message),
@@ -2926,7 +2944,7 @@ class DSHBot(Client):
         if text.lstrip().startswith(("【闲聊模式】", "【群聊插话判断】")):
             log.warning("dropped prompt-shaped chatter line")
             return
-        entry.lines.append(f"[{time.strftime('%H:%M')}] {sender}: {text}")
+        entry.lines.append(f"[{time.strftime('%H:%M')}] {sender}: {self._humanize_mentions(conv_key, text)}")
         if len(entry.lines) > 12:
             entry.lines = entry.lines[-12:]
         if entry.first_at == 0.0:
