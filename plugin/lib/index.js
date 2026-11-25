@@ -690,15 +690,24 @@ export function apply(ctx, rawConfig) {
         }, 90000)
       })
 
+      const threshold = Number.isFinite(Number(body?.threshold)) ? Number(body.threshold) : 2
+      const hint = typeof body?.hint === 'string' ? body.hint.trim() : ''
       const instruction = [
-        '【群聊插话判断器】你是一个独立判断器，不参与聊天，只做判断。',
-        '下面是这个群里最近的消息原文（每行 发言人: 内容）：',
+        '【群聊插话判断器】你就是这个群里的一员，只做决定：接一句，还是不说。',
+        '默认接一句（口语、1~2 句）。只有这三种情况才不说：',
+        '① 明显是两个人一对一搭话，既没提到你也没什么可加；',
+        '② 你刚说过同类的话；',
+        '③ 这条只是表情/图片/链接/单字，没有可回应的内容。',
+        '其余情况（抛观点、吐槽、问问题、接梗）都可以接；话题不熟也可以轻接。',
+        hint,
+        '',
+        '群里的原文（每行 发言人: 内容）：',
         transcript,
         '',
-        '判断现在是否需要一个机器人插话/回答。只输出两行：',
-        '第一行：REPLY 或 SKIP',
-        '第二行：一句话理由（不超过40字）',
-      ].join('\n')
+        '输出格式（严格两行）：',
+        '第一行：[[join: 0~3]]（3=必须接，2=想接，1=可接可不接，0=不说）',
+        '第二行：一句话理由（不超过 40 字）',
+      ].filter(line => line !== '').join('\n')
 
       try {
         await sessionController.prompt({
@@ -716,12 +725,19 @@ export function apply(ctx, rawConfig) {
       const answer = String(await verdict)
       const lines = answer.split('\n').map(line => line.trim()).filter(line => line !== '')
       const head = (lines[0] ?? '').toUpperCase()
-      const needReply = head.startsWith('REPLY')
-      const decisive = head.startsWith('REPLY') || head.startsWith('SKIP')
+      const joinMatch = answer.match(/\[\[\s*join\s*:\s*([0-3])\s*\]\]/i)
+      const score = joinMatch ? Number(joinMatch[1]) : null
+      const legacyReply = head.startsWith('REPLY')
+      const legacySkip = head.startsWith('SKIP')
+      const needReply = score !== null ? score >= threshold : legacyReply
+      const decisive = score !== null || legacyReply || legacySkip
+      const noteSource = score !== null ? answer.replace(joinMatch[0], '') : lines.slice(1).join(' ')
       return {
         ok: decisive,
         needReply,
-        note: lines.slice(1).join(' ').slice(0, 200),
+        score,
+        threshold,
+        note: noteSource.trim().split('\n').map(line => line.trim()).filter(line => line !== '').join(' ').slice(0, 200),
         raw: answer.slice(0, 200),
       }
     },

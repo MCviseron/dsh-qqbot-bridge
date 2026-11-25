@@ -57,8 +57,10 @@ class StubBridge:
         self.calls = []
         self.judged = []
 
-    async def judge(self, conv_key, transcript):
+    async def judge(self, conv_key, transcript, *, threshold=2, hint=""):
         self.judged.append(transcript)
+        self.last_threshold = threshold
+        self.last_hint = hint
         return self.verdict
 
     async def inbound(self, **kw):

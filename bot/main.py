@@ -75,6 +75,7 @@ STICKER_DIR = ROOT.parent / "assets" / "stickers"
 # 模型想发表情包时写 [[sticker: 名字]]，机器人从 assets/stickers 里取图发出去
 STICKER_MARK = re.compile(r"\[\[sticker\s*[:：]\s*([^\]]+?)\]\]", re.IGNORECASE)
 NO_REPLY_MARK = "[NO_REPLY]"
+JOIN_MARK_RE = re.compile(r"\[\[\s*join\s*:\s*([0-3])\s*\]\]", re.IGNORECASE)
 
 # 模型用这个标记把本地文件交回 QQ：[[send_file: D:\path\pic.png]]
 SEND_FILE_MARK = re.compile(r"\[\[(?:send_file|send_image|发送文件|发图)\s*[:：]\s*([^\]]+?)\]\]", re.IGNORECASE)
@@ -582,6 +583,9 @@ class DSHBot(Client):
         self._pending_quotes: Dict[str, Dict[str, Any]] = {}
         self._started_at = time.time()
         self._chat_turns: Dict[str, bool] = {}
+        self._judge_silent_streak: Dict[str, int] = {}
+        self._judge_force_at: Dict[str, float] = {}
+        self._judge_threshold_used: Dict[str, int] = {}
         self._bg_tasks: set = set()
         self._owner_recent: Dict[str, float] = {}
         self._last_group_at: Dict[str, float] = {}
@@ -2102,6 +2106,7 @@ class DSHBot(Client):
     METRIC_KEYS = (
         "c2c_msgs", "group_msgs", "group_at", "group_images", "quotes",
         "judge_calls", "judge_spoke", "judge_silent", "hook_skips",
+        "judge_score0", "judge_score1", "judge_score2", "judge_score3",
         "streams", "stream_fallbacks", "files_image", "files_doc", "files_sent",
         "approvals", "approvals_allow", "approvals_deny",
         "questions", "questions_answered", "question_timeouts",
@@ -2544,8 +2549,32 @@ class DSHBot(Client):
                 log.info("turn %s already streamed; dropping durable duplicate for %s", turn_id or "-", conv_key)
                 await self._drain_queued(conv_key)
                 return
+            join_match = JOIN_MARK_RE.search(text)
+            join_score = int(join_match.group(1)) if join_match else None
+            if join_match:
+                text = JOIN_MARK_RE.sub("", text).strip()
+                self._bump("judge_score%d" % join_score)
+                threshold = self._judge_thresholds().get(conv_key, self.rt_int("judge_join_threshold", 2))
+                if self._chat_turns.get(conv_key) and join_score < threshold:
+                    self._judge_thresholds().pop(conv_key, None)
+                    self._chat_turns.pop(conv_key, None)
+                    self._judge_streaks()[conv_key] = self._judge_streaks().get(conv_key, 0) + 1
+                    self._bump("judge_silent")
+                    log.info(
+                        "chatter judge scored %d < threshold %d in %s; staying silent",
+                        join_score, threshold, conv_key,
+                    )
+                    await self._drain_queued(conv_key)
+                    return
+                if self._chat_turns.get(conv_key) and not text.strip():
+                    self._chat_turns.pop(conv_key, None)
+                    self._judge_streaks()[conv_key] = self._judge_streaks().get(conv_key, 0) + 1
+                    self._bump("judge_silent")
+                    await self._drain_queued(conv_key)
+                    return
             if NO_REPLY_MARK in text:
                 if self._chat_turns.pop(conv_key, False):
+                    self._judge_streaks()[conv_key] = self._judge_streaks().get(conv_key, 0) + 1
                     self._bump("judge_silent")
                     log.info("agent stayed silent in %s (chatter judge)", conv_key)
                     await self._drain_queued(conv_key)
@@ -2554,6 +2583,7 @@ class DSHBot(Client):
                 log.warning("model tried to stay silent on a directed message in %s; answering instead", conv_key)
                 text = text.replace(NO_REPLY_MARK, "").strip() or "在的，你说。"
             if self._chat_turns.pop(conv_key, False):
+                self._judge_streaks()[conv_key] = 0
                 self._bump("judge_spoke")
             had_media = bool(SEND_FILE_MARK.search(text) or STICKER_MARK.search(text))
             self._spawn_files(conv_key, text)
@@ -3083,6 +3113,53 @@ class DSHBot(Client):
             return True
         return False
 
+    def _judge_streaks(self) -> Dict[str, int]:
+        streak = getattr(self, "_judge_silent_streak", None)
+        if streak is None:
+            streak = self._judge_silent_streak = {}
+        return streak
+
+    def _judge_forces(self) -> Dict[str, float]:
+        forced = getattr(self, "_judge_force_at", None)
+        if forced is None:
+            forced = self._judge_force_at = {}
+        return forced
+
+    def _judge_thresholds(self) -> Dict[str, int]:
+        used = getattr(self, "_judge_threshold_used", None)
+        if used is None:
+            used = self._judge_threshold_used = {}
+        return used
+
+    def _judge_threshold(self, conv_key: str) -> int:
+        """开口阈值：基础值可配，连续沉默或长时间未开口时临时降一档。"""
+        if not self.rt_bool("judge_score_output", True):
+            return 0
+        base = max(0, min(3, self.rt_int("judge_join_threshold", 2)))
+        lowered = base
+        streak = self._judge_streaks().get(conv_key, 0)
+        if streak >= max(1, self.rt_int("judge_silent_streak", 3)):
+            lowered = max(0, base - 1)
+        spoke_at = self._last_bot_say.get(conv_key, ("", 0.0))[1]
+        quiet = time.time() - spoke_at if spoke_at else float("inf")
+        hourly = max(0, self.rt_int("judge_force_per_hour", 1))
+        forced = self._judge_forces()
+        if hourly and quiet > 3600 and time.time() - forced.get(conv_key, 0.0) > 3600:
+            lowered = min(lowered, max(0, base - 1))
+            forced[conv_key] = time.time()
+        return lowered
+
+    def _judge_stats_line(self) -> str:
+        metrics = getattr(self, "_metrics", None) or {}
+        calls = int(metrics.get("judge_calls", 0) or 0)
+        spoke = int(metrics.get("judge_spoke", 0) or 0)
+        ratio = (spoke / calls) if calls else 0.0
+        target = float(self.rt_float("judge_target_ratio", 0.3))
+        return (
+            f"今天你在这个群：判断 {calls} 次、开口 {spoke} 次（{ratio:.0%}）。"
+            f"目标大概 {target:.0%}；低于它的时候更大胆一点，轻接一句也行。"
+        )
+
     async def _maybe_judge(self, conv_key: str, *, force_timer: bool = False) -> None:
         """Ask the agent whether it wants to say something; it may stay silent."""
         entry = self.chatter.get(conv_key)
@@ -3157,6 +3234,16 @@ class DSHBot(Client):
                 "（谁在跟谁说话、是不是在问你，你自己按上下文判断，不要只看最后两条。）"
             )
 
+        if self.rt_bool("judge_score_output", True):
+            format_rules = [
+                "输出格式：",
+                "第一行只写 [[join: 0~3]]（3=必须接，2=想接，1=可接可不接，0=不说）",
+                "第二行起写你想说的话；不想说时整条只留 [[join: 0]]。",
+            ]
+        else:
+            format_rules = ["不想说话时整条只回 [NO_REPLY]，其余情况直接写你想说的话。"]
+        self._judge_thresholds()[conv_key] = self._judge_threshold(conv_key)
+
         prompt = chr(10).join(
             [
                 "【群聊插话判断】",
@@ -3166,11 +3253,17 @@ class DSHBot(Client):
                 "这之后群里在聊：",
                 *lines,
                 "",
-                "像群里的一员那样判断——没人点名不代表你必须沉默：",
-                f"- 想说话就说：有人叫你/别名（{self._alias_list()}）、问到你了、聊到你熟的或感兴趣的事、想吐槽想接梗想补充，都可以正常参与；",
-                "- 不想说就不说：别人在互相对话、话题你没兴趣、或者你刚说过类似的话，只回 [NO_REPLY]；",
-                "- 别人互相聊的时候，别把他们的话当成对你的邀请，也不要替他们回答；想参与就说得轻一点；",
-                "- 不要重复自己说过的内容，不要总结/复述别人的聊天，不要客套，不要写成报告。",
+                self._judge_stats_line(),
+                "",
+                "像群里的一员那样：默认接一句（1~2 句口语），别总结、别复述、别客套、别写成报告。",
+                "只有这三种情况才沉默：",
+                "① 明显是两个人一对一搭话，既没提到你也没什么可加；",
+                "② 你 2 分钟内刚说过同类的话；",
+                "③ 这条只是表情/图片/链接/单字，没有可回应的内容。",
+                "其余情况（抛观点、吐槽、聊到你熟的东西、问问题、接梗）都可以接一句；",
+                "话题不熟也可以轻接一句（提问、帮腔、吐槽），不必等到“感兴趣”才开口。",
+                "",
+                *format_rules,
             ]
         )
         self._bump("judge_calls")
@@ -3214,15 +3307,24 @@ class DSHBot(Client):
         if transcript.strip() == "":
             transcript = f"{self._display_name(conv_key, member_openid)}: {clean_content(getattr(message, 'content', ''))}"
         try:
-            verdict = await self.bridge.judge(conv_key, transcript)
+            verdict = await self.bridge.judge(
+                conv_key,
+                transcript,
+                threshold=self._judge_threshold(conv_key),
+                hint=self._judge_stats_line(),
+            )
         except BridgeError as error:
             log.warning("plan B judge unavailable (%s); fallback to plain chatter", error)
             await self._buffer_chatter(conv_key, self._display_name(conv_key, member_openid), clean_content(getattr(message, "content", "")))
             await self._maybe_judge(conv_key)
             return
         need_reply = bool(verdict.get("needReply"))
+        score = verdict.get("score")
         self._bump("judge_calls")
+        if isinstance(score, int) and 0 <= score <= 3:
+            self._bump("judge_score%d" % score)
         self._bump("judge_spoke" if need_reply else "judge_silent")
+        self._judge_streaks()[conv_key] = 0 if need_reply else self._judge_streaks().get(conv_key, 0) + 1
         note = str(verdict.get("note") or "").strip()
         if not need_reply:
             log.info("plan B: judge stayed silent%s", f" ({note[:60]})" if note else "")

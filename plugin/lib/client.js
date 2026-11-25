@@ -125,9 +125,11 @@ window.__ModuleLoader__.load({
       auto_group: ["自动分组（每个会话独立工作区）", "关闭则所有会话共用同一个工作目录"],
       approval_inline_redraw: ["审批按钮就地重绘为“已允许”", "关闭后退回旧行为：额外发一条结论文字 + “已处理”卡片"],
       kick_confirm: ["踢人二次审批", "开启后踢人前先在你的私聊弹一张确认卡片，点了才执行"],
+      interject_hook_only: ["插话只要命中钩子才判断", "开启后只有被点名/带问号/提到别名/长时间冷场才花一次判断；关闭则每攒够几条就判一次"],
+      judge_score_output: ["判断用打分制", "让模型先给 0~3 分的开口意愿，再按阈值决定发不发"],
     }
 
-    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_inline_redraw","kick_confirm"]
+    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_inline_redraw","kick_confirm","interject_hook_only","judge_score_output"]
       .map(function (key) { return [key, LABELS[key][0], LABELS[key][1]] })
 
     // 静默时段：开始/结束时间 + 最右侧开关，并实时显示"当前是否静默、下次切换"
@@ -160,6 +162,9 @@ window.__ModuleLoader__.load({
       ["pool_ttl_s","消息池保留（秒）",60,86400], ["pool_max","消息池上限（条）",10,1000],
       ["metrics_keep_days","仪表盘数据保留（天）",1,365], ["interject_cold_s","冷场判定（秒，超过则有钩子）",60,7200],
       ["send_file_timeout_s","发文件超时（秒）",10,300], ["stream_retry_s","流式降级后暂停（秒）",10,3600],
+      ["judge_join_threshold","开口阈值（0~3，越大越安静）",0,3],
+      ["judge_silent_streak","连续沉默几次后自动降一档",0,20],
+      ["judge_force_per_hour","每小时最多几次降档补开口",0,5],
     ]
 
     const TEXTS = [

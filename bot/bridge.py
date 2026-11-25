@@ -107,12 +107,14 @@ class BridgeClient:
             },
         )
 
-    async def judge(self, conv_key: str, transcript: str) -> Dict[str, Any]:
+    async def judge(
+        self, conv_key: str, transcript: str, *, threshold: int = 2, hint: str = ""
+    ) -> Dict[str, Any]:
         """Ask the plugin's independent judge session whether to answer."""
         return await self._request(
             "POST",
             "/judge",
-            payload={"convKey": conv_key, "transcript": transcript},
+            payload={"convKey": conv_key, "transcript": transcript, "threshold": int(threshold), "hint": hint},
         )
 
     async def answer_question(self, question_id: str, index: int) -> Dict[str, Any]:
