@@ -782,6 +782,39 @@ class DSHBot(Client):
                 if message_id not in live:
                     self.pool_idx.pop(idx, None)
 
+    def _strip_self_mention(self, conv_key: str, text: str) -> str:
+        """群聊里 @ 自己那一次不进正文：'@蓝色大肥鱼 现在？' → '现在？'。"""
+        kind, _, group_openid = conv_key.partition(":")
+        if kind != "group":
+            return text
+        own_tail = short_id((getattr(self, "_bot_openids", {}) or {}).get(group_openid, "")).upper()
+        name = str(getattr(self.config, "botname", "") or "")
+        body = str(text or "").lstrip()
+        prefixes = []
+        if name:
+            prefixes.append("@" + name)
+        if own_tail:
+            prefixes.append("@群友" + own_tail)
+        for prefix in prefixes:
+            if body.startswith(prefix):
+                return body[len(prefix):].lstrip()
+        return body
+
+    def _roster_line(self, conv_key: str, limit: int = 12) -> str:
+        """短号 → 昵称对照，让转录里的 @群友XXXX 能被认出来。"""
+        index = getattr(self, "member_index", {}).get(conv_key) or {}
+        names = (getattr(self, "_member_names", {}) or {}).get(conv_key) or {}
+        rows = []
+        for tail, openid in list(index.items())[:limit]:
+            name = names.get(tail) or ""
+            if name:
+                rows.append(str(tail).upper() + "=" + name)
+            else:
+                rows.append(str(tail).upper() + "=" + self._display_name(conv_key, openid))
+        if not rows:
+            return ""
+        return "群友对照（短号=昵称）：" + "、".join(rows)
+
     def _humanize_mentions(self, conv_key: str, text: str) -> str:
         """@群友622C23 → @真实昵称，让判断/转录看得出来这次在跟谁说话。"""
         if "@群友" not in text:
@@ -3301,11 +3334,13 @@ class DSHBot(Client):
             format_rules = ["不想说话时整条只回 [NO_REPLY]，其余情况直接写你想说的话。"]
         self._judge_thresholds()[conv_key] = self._judge_threshold(conv_key)
 
+        roster = self._roster_line(conv_key)
         prompt = chr(10).join(
             [
                 "【群聊插话判断】",
                 situation,
                 audience,
+                *([roster] if roster else []),
                 "",
                 "这之后群里在聊：",
                 *lines,
@@ -3421,6 +3456,8 @@ class DSHBot(Client):
         self._bump("group_at")
         if member_openid:
             self._remember_member(conv_key, member_openid, _author_nick(message))
+        # 先补名字，再去掉开头那次「@我」——闲聊转录里保留全部 @，这里只处理点名的这条
+        text = self._strip_self_mention(conv_key, self._humanize_mentions(conv_key, text))
         if getattr(message, "attachments", None):
             self._bump("group_images")
         self._pool_incoming(message, "group", group_openid, conv_key, short_id(member_openid))
