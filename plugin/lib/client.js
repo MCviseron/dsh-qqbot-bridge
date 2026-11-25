@@ -295,37 +295,91 @@ window.__ModuleLoader__.load({
         })
       }
 
-      function polyline(points, key, max, width, height) {
-        if (max <= 0) return ""
-        const step = width / Math.max(1, points.length - 1)
-        return points.map(function (point, index) {
-          const x = (index * step).toFixed(1)
-          const y = (height - (point[key] / max) * (height - 6) - 2).toFixed(1)
-          return (index === 0 ? "M" : "L") + x + " " + y
-        }).join(" ")
+      function chartTick(tSec, spanSec) {
+        const d = new Date(Number(tSec) * 1000)
+        const pad = function (n) { return ("0" + n).slice(-2) }
+        if (spanSec > 86400) return (d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + "h"
+        return pad(d.getHours()) + ":" + pad(d.getMinutes())
       }
 
-      function areaChart(points, keys, colors) {
+      function areaChart(rawPoints, keys, colors) {
+        // 7 天区间会产生上万条分钟点：抽稀到 ≤1000 条，形状不变，重绘不卡
+        let points = rawPoints
+        if (points.length > 1000) {
+          const stride = Math.ceil(points.length / 1000)
+          points = points.filter(function (_point, index) { return index % stride === 0 || index === points.length - 1 })
+        }
         const width = 560
-        const height = 120
+        const height = 150
+        const left = 30
+        const right = 8
+        const top = 8
+        const bottom = 20
+        const plotW = width - left - right
+        const plotH = height - top - bottom
         let max = 1
         points.forEach(function (point) {
           keys.forEach(function (key) { if (point[key] > max) max = point[key] })
         })
+        const nice = Math.max(1, Math.ceil(max / 2) * 2)
+        const stamp = function (point) { return Number(point.t) || 0 }
+        let tMin = points.length ? Math.min.apply(null, points.map(stamp)) : 0
+        let tMax = points.length ? Math.max.apply(null, points.map(stamp)) : 60
+        if (tMax - tMin < 60) tMax = tMin + 60
+        const xAt = function (point) { return left + ((stamp(point) - tMin) / (tMax - tMin)) * plotW }
+        const yAt = function (value) { return top + plotH - ((Number(value) || 0) / nice) * plotH }
         const children = [
           h("rect", { key: "bg", x: 0, y: 0, width: width, height: height, fill: "transparent" }),
         ]
-        for (let line = 1; line <= 3; line += 1) {
-          const y = (height / 4) * line
-          children.push(h("line", { key: "grid" + line, x1: 0, y1: y, x2: width, y2: y, stroke: "var(--dsw-alias-border-l2, rgba(255,255,255,0.12))", strokeWidth: 0.5, strokeDasharray: "3 4" }))
+        ;[nice, Math.round(nice / 2), 0].forEach(function (value, index) {
+          const y = yAt(value)
+          children.push(h("line", {
+            key: "gy" + index, x1: left, y1: y, x2: left + plotW, y2: y,
+            stroke: "var(--dsw-alias-border-l2, #e3e6ea)", strokeWidth: 0.5,
+          }))
+          children.push(h("text", {
+            key: "gyt" + index, x: left - 5, y: y + 3, textAnchor: "end", fontSize: 9,
+            fill: "var(--dsw-alias-label-tertiary, #8b929c)",
+          }, String(value)))
+        })
+        const spanSec = tMax - tMin
+        for (let i = 0; i <= 4; i += 1) {
+          const x = left + (plotW / 4) * i
+          const tickTime = tMin + (spanSec / 4) * i
+          children.push(h("line", {
+            key: "gx" + i, x1: x, y1: top + plotH, x2: x, y2: top + plotH + 3,
+            stroke: "var(--dsw-alias-border-l3, #cfd4da)", strokeWidth: 0.5,
+          }))
+          children.push(h("text", {
+            key: "gxt" + i, x: x, y: height - 6,
+            textAnchor: i === 0 ? "start" : (i === 4 ? "end" : "middle"), fontSize: 9,
+            fill: "var(--dsw-alias-label-tertiary, #8b929c)",
+          }, chartTick(tickTime, spanSec)))
         }
         keys.forEach(function (key) {
-          const d = polyline(points, key, max, width, height)
-          if (!d) return
-          children.push(h("path", { key: "a" + key, d: d + " L" + width + " " + height + " L0 " + height + " Z", fill: colors[key], opacity: 0.14 }))
-          children.push(h("path", { key: "l" + key, d: d, fill: "none", stroke: colors[key], strokeWidth: 2, strokeLinejoin: "round", strokeLinecap: "round" }))
+          const coords = points.map(function (point) {
+            return [xAt(point).toFixed(1), yAt(point[key]).toFixed(1)]
+          })
+          if (!coords.length) return
+          if (coords.length === 1) {
+            children.push(h("circle", { key: "p" + key, cx: coords[0][0], cy: coords[0][1], r: 2.5, fill: colors[key] }))
+            return
+          }
+          const d = coords.map(function (pair, index) {
+            return (index === 0 ? "M" : "L") + pair[0] + " " + pair[1]
+          }).join(" ")
+          const baseline = (top + plotH).toFixed(1)
+          children.push(h("path", {
+            key: "a" + key,
+            d: d + " L" + coords[coords.length - 1][0] + " " + baseline + " L" + coords[0][0] + " " + baseline + " Z",
+            fill: colors[key], opacity: 0.14,
+          }))
+          children.push(h("path", {
+            key: "l" + key, d: d, fill: "none", stroke: colors[key], strokeWidth: 2,
+            strokeLinejoin: "round", strokeLinecap: "round",
+          }))
         })
-        return h("svg", { viewBox: "0 0 " + width + " " + height, style: { width: "100%", height: 120, display: "block" } }, children)
+        return h("svg", { viewBox: "0 0 " + width + " " + height, style: { width: "100%", height: 150, display: "block" } }, children)
       }
 
       function ring(ratio, label, detail, color) {
