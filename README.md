@@ -5,6 +5,12 @@ QQ 侧只做搬运，真正干活的是 DSH 里的 Session（有工具、有工�
 
 你的点歌机器人（`EX-ChatClone-Reloader`）和 SDK（`viseron-botpy`）全程只读，没有改动。
 
+## 版本与变更
+
+- 变更记录：[CHANGELOG.md](CHANGELOG.md)（Keep a Changelog + 语义化版本，按 新增/修复/性能/重构… 分类）
+- 当前版本见 [plugin/package.json](plugin/package.json)；发布方式：`git tag plugin-v<版本号>` 触发 GitHub Actions，校验通过后用 OIDC 可信发布到 npm
+- 历史标签：`plugin-v0.2.1`（首个 npm 版本）
+
 ## 架构
 
 ```
