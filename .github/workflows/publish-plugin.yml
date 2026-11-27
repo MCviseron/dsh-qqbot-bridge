@@ -48,12 +48,10 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: publish under the scoped name (local name must match the DSH profile key)
-        run: |
-          npm pkg set name=@mcviseron/dsh-qq-bridge
-          # 浏览器半身必须用同一个 id 注册，否则宿主报 "loaded without registering"
-          node scripts/scope-client-id.mjs
-          grep -q "id: \"@mcviseron/dsh-qq-bridge\"" lib/client.js
+      - name: publish under the scoped name
+        # 只改发布用的包名；bundle patch 与 client 注册 id 始终保持裸名 dsh-qq-bridge，
+        # 与 profile 里的条目名一致（npm 用户用别名安装来提供这个名字）。
+        run: npm pkg set name=@mcviseron/dsh-qq-bridge
       - name: pack check
         run: npm pack --dry-run
       - name: upgrade npm (OIDC trusted publishing needs npm >= 11.5)

@@ -15,6 +15,13 @@
 
 - （暂无）
 
+## [0.3.6] - 2026-11-27
+
+### 修复
+
+- **包名统一为 npm 上的 scoped 名**（@mcviseron/dsh-qq-bridge）：DSH 按 roster 条目的 name 去 profile 的 node_modules 里 import，名字解析不到时不会报错，而是让 profile 里 id: qq-bridge 的配置**静默落空**，插件退化成默认配置（statePath / cwd / token 全丢 → 会话按默认目录重建、审批不回 QQ）。现在 bundle patch 与浏览器半身的注册 id 都用 scoped 名；本地 link 也挂在 scoped 名下（"@mcviseron/dsh-qq-bridge": "link:<path>"）。规则只有一条：条目名 = 包名。
+- 撤销 0.3.3 / 0.3.4 里「把 patch 名改成 scoped、又改回裸名」的来回，并删除 scripts/scope-client-id.mjs（发布时只改 npm 包名，不再改源码里的名字）。
+
 ## [0.3.5] - 2026-11-27
 
 ### 修复
