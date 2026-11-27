@@ -1,5 +1,27 @@
 # dsh-qq-bridge
 
+## 安装
+
+从 npm 装（**包名带 scope**，profile 里的 `name` 必须写同一个名字，否则
+`Cannot find package 'dsh-qq-bridge'`）：
+
+```bash
+npm i @mcviseron/dsh-qq-bridge
+```
+
+```yaml
+# profile 的 cordis.patch.yml
+- insert:
+    - id: qq-bridge
+      name: '@mcviseron/dsh-qq-bridge'
+```
+
+本地开发用 link 时保留裸名：
+
+```bash
+npm i dsh-qq-bridge@link:/path/to/plugin
+```
+
 DeepSeek Harness Host 插件：把 QQ 会话映射成 DSH Session。
 
 - 每条 QQ 消息 → `ctx.sessionController.prompt()`（每个会话一个 Session，首次自动 `create()`）

@@ -15,6 +15,12 @@
 
 - （暂无）
 
+## [0.3.3] - 2026-11-27
+
+### 修复
+
+- 装到别的机器上报 `Cannot find package 'dsh-qq-bridge'`：`cordis.patch.yml` 里插入的条目名写的是裸名，而 npm 上发布的包名是 scoped 的 `@mcviseron/dsh-qq-bridge`（CI 发布时会改名），两者对不上就解析不到；现在 patch 用 scoped 名，README 补了安装说明（含本地 link 的写法）
+
 ## [0.3.2] - 2026-11-27
 
 ### 修复
