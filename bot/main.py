@@ -58,7 +58,8 @@ SESSION_COMMANDS = {"/会话", "/sessions", "会话", "/当前会话"}
 SWITCH_COMMANDS = {"/切会话", "/切换", "/switch", "切会话"}
 BACK_COMMANDS = {"/切回", "/返回", "/back", "切回"}
 USAGE_COMMANDS = {"/花费", "/用量", "/token", "/usage", "/cost", "花费", "用量"}
-MENU_COMMANDS = {"/菜单", "/指令", "/面板", "/menu", "/commands", "菜单", "指令"}
+# /指令 与 /commands 归 DSH 指令列表（下面 handle_extra_command 里那条分支），不再和菜单混用
+MENU_COMMANDS = {"/菜单", "/面板", "/menu", "菜单"}
 RECALL_COMMANDS = {"/撤回", "/recall", "撤回"}
 POOL_COMMANDS = {"/消息池", "/池", "/pool", "消息池"}
 URGENT_EVENTS = {"approval", "notice"}
@@ -286,17 +287,85 @@ def parse_decision(text: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-COMMAND_PANEL_ROWS = [
-    [("/帮助", "帮助"), ("/状态", "状态"), ("/会话", "会话")],
-    [("/花费", "花费"), ("/花费 全部", "花费全部"), ("/新会话", "新会话")],
-    [("/截图", "截图"), ("/窗口", "窗口"), ("/菜单", "菜单")],
-]
+# 命令的唯一来源：显示名 / 别名 / 说明 / 是否仅主人。
+# 按钮键盘、QQ 指令面板（panels.json）和 /帮助 全部由它生成，避免三处各写一份走样。
+COMMAND_SPECS: Tuple[Tuple[str, Tuple[str, ...], str, bool], ...] = (
+    ("帮助", ("/帮助", "/help", "/dsh", "帮助", "help"), "用法与全部指令", False),
+    ("菜单", ("/菜单", "/面板", "/menu", "菜单"), "消息内按钮面板", False),
+    ("状态", ("/状态", "/status", "状态"), "授权、会话、桥接状态", True),
+    ("会话", ("/会话", "/sessions", "/当前会话", "会话"), "当前绑定与可切会话", True),
+    ("新会话", ("/新会话", "/reset", "/重置", "/清空", "新会话", "reset", "重置", "清空上下文"), "清空上下文重开", True),
+    ("花费", ("/花费", "/用量", "/token", "/usage", "/cost", "花费", "用量"), "本会话 token 用量", True),
+    ("花费 全部", ("/花费 全部",), "最近所有会话用量", True),
+    ("切会话", ("/切会话", "/切换", "/switch", "切会话"), "切到指定 DSH 会话（/切会话 <session-id>）", True),
+    ("切回", ("/切回", "/返回", "/back", "切回"), "回到原来的会话", True),
+    ("截图", ("/截图", "/screenshot", "/shot", "截图"), "截本机窗口发给你", True),
+    ("窗口", ("/窗口", "/windows", "窗口"), "列出可截图窗口", True),
+    ("消息池", ("/消息池", "/池", "/pool", "消息池"), "最近 10 分钟收发", True),
+    ("撤回", ("/撤回", "/recall", "撤回"), "撤回我发的或指定那条", False),
+    ("链接", ("/链接", "/邀请", "/invite", "邀请链接"), "取 DSH 邀请链接", True),
+    ("绑定", ("/绑定", "/绑定主人", "绑定主人"), "把自己绑成本会话主人", False),
+    ("分组", ("/分组", "/workspace", "/ws"), "迁移到独立工作区", True),
+    ("指令", ("/指令", "/commands"), "DSH 侧指令列表", False),
+)
+
+
+def command_panel_rows(per_row: int = 3) -> List[List[Tuple[str, str]]]:
+    """按钮键盘的分行结果：每行 per_row 个（data=发出去的指令，label=按钮文字）。"""
+    items = [(name, alias) for name, aliases, _desc, _owner in COMMAND_SPECS for alias in (aliases[0],) if not name.startswith("花费 ")]
+    rows: List[List[Tuple[str, str]]] = []
+    for index in range(0, len(items), per_row):
+        rows.append([(data, label) for data, label in items[index:index + per_row]])
+    return rows
+
+
+# QQ 指令面板一屏放不下太多：平台会回「超出数量限制」。按 COMMAND_SPECS 的先后取前 N 个，
+# 剩下的照样能用（/帮助 里全在），只是不在面板上。
+# 平台对「一个机器人名下的面板条目总数」有上限（实测 5+5 通过、7+3 触发「超出数量限制」）
+PANEL_LIMIT_C2C = 5
+PANEL_LIMIT_GROUP = 5
+PANEL_MAX_ITEMS = PANEL_LIMIT_C2C + PANEL_LIMIT_GROUP
+
+
+def build_panels_doc(limit: int = PANEL_LIMIT_C2C, group_limit: int = PANEL_LIMIT_GROUP) -> Dict[str, Any]:
+    """QQ 指令面板：c2c 给全套（受平台条数上限约束），group 只放公开命令。"""
+    def items(include_owner: bool) -> List[Dict[str, str]]:
+        out = []
+        for name, _aliases, desc, owner_only in COMMAND_SPECS:
+            if owner_only and not include_owner:
+                continue
+            out.append({"type": "command", "name": name, "desc": desc})
+            if len(out) >= max(1, limit):
+                break
+        return out
+
+    return {
+        "c2c": {"target_type": "all", "remark": "DSH 指令面板", "items": items(True)[:limit]},
+        "group": {"target_type": "all", "remark": "DSH 群聊指令面板", "items": items(False)[:group_limit]},
+    }
+
+
+def write_panels_doc(path: Optional[Path] = None) -> bool:
+    """把命令表渲染成 panels.json；内容没变就不落盘（返回是否写过）。"""
+    target = path or (ROOT / "panels" / "panels.json")
+    text = json.dumps(build_panels_doc(), ensure_ascii=False, indent=2) + chr(10)
+    try:
+        if target.exists() and target.read_text(encoding="utf-8") == text:
+            return False
+    except OSError:
+        pass
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        return True
+    except OSError:
+        return False
 
 
 def command_keyboard() -> Dict[str, Any]:
     """Command panel: every button sends its command as a normal message."""
     rows = []
-    for row in COMMAND_PANEL_ROWS:
+    for row in command_panel_rows():
         buttons = []
         for data, label in row:
             buttons.append(
@@ -611,6 +680,9 @@ class DSHBot(Client):
         self._bump("c2c_msgs", 0)  # 初始化并落盘计数器，仪表盘开局就有数据
         self._prune_metrics(time.time())  # 启动时清一次超过保留期的归档
         await self._prefetch_group_profiles()
+        # 面板由命令表生成（有什么命令就有什么按钮），再推给 QQ
+        if write_panels_doc():
+            log.info("panels.json regenerated from the command table")
         await self._sync_panels()
         # 严格闭合：重启后先把上个进程遗留的流式会话关掉，再开始新回合
         try:
@@ -627,6 +699,7 @@ class DSHBot(Client):
 
     async def _sync_panels(self) -> None:
         """Push bot/panels/panels.json to the QQ instruction panel."""
+        write_panels_doc()  # 命令表变了就先重写，避免推到旧面板
         try:
             store = await load_panels(self.api, root_dir=str(ROOT / "panels"))
             await store.sync_from_config()
@@ -3896,20 +3969,17 @@ class DSHBot(Client):
         self.group_state.pop(group_openid, None)
 
     def help_text(self) -> str:
-        return "\n".join(
-            [
-                f"我是 {self.config.botname}：DeepSeek Harness 的 QQ 入口。",
-                "· /状态 看授权、/窗口 列窗口、/截图 <关键字> 截图发你",
-                "· 连续发几条会合并成一条再处理；发图我能看图",
-                "· 群里 @ 我才干活，其它时候像群友一样听着、偶尔插一句",
-                "· /新会话（/重置）清空上下文；群里 /绑定 把自己绑成群主",
-                "· /会话 看绑定，/切会话 <id> 换会话，/切回 回到原会话",
-                "· /花费 看本会话 token 用量（/花费 全部 看最近所有会话）",
-                "· /菜单 弹出按钮面板，常用指令一点就走",
-                "· /消息池 看最近 10 分钟收发（/池），/撤回 [n|#序号] 撤我发的或指定那条",
-                "· 需要授权时审批发到主人单聊：点按钮或回「允许」/「拒绝」",
-            ]
-        )
+        """按命令表生成，面板 / 键盘 / 帮助三处不会再各说一套。"""
+        lines = [f"我是 {self.config.botname}：DeepSeek Harness 的 QQ 入口。"]
+        for name, _aliases, desc, owner_only in COMMAND_SPECS:
+            lines.append(f"· /{name} {desc}" + ("（主人）" if owner_only else ""))
+        lines += [
+            "——",
+            "连续发几条会合并成一条再处理；发图我能看图。",
+            "群里 @ 我才干活，其它时候像群友一样听着、偶尔插一句。",
+            "需要授权时审批发到主人单聊：点按钮或回「允许」/「拒绝」。",
+        ]
+        return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #

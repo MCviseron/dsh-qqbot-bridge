@@ -70,6 +70,9 @@ window.__ModuleLoader__.load({
       cardKey: { color: "var(--dsw-alias-label-tertiary)" },
       cardValue: { color: "var(--dsw-alias-label-secondary)", fontVariantNumeric: "tabular-nums" },
       sectionTitle: { fontSize: 12, letterSpacing: "0.04em", color: "var(--dsw-alias-label-tertiary)", margin: "10px 0 2px" },
+      // 顶/底悬浮栏：状态与操作、保存按钮常驻，不用滑到最底下
+      stickyTop: { position: "sticky", top: 0, zIndex: 6, display: "grid", gap: 10, padding: "10px 0 12px", marginTop: -10, background: "linear-gradient(to bottom, rgba(22,24,30,0.97), rgba(22,24,30,0.88))", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid var(--dsw-alias-border-l2)" },
+      stickyBottom: { position: "sticky", bottom: 0, zIndex: 6, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 0", background: "linear-gradient(to top, rgba(22,24,30,0.97), rgba(22,24,30,0.88))", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderTop: "1px solid var(--dsw-alias-border-l2)" },
       input: { width: 132, padding: "5px 8px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", textAlign: "right" },
       inputWide: { width: 260, textAlign: "left" },
       textarea: { width: "100%", minHeight: 120, padding: "8px 10px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", textAlign: "left" },
@@ -171,13 +174,16 @@ window.__ModuleLoader__.load({
       ["judge_force_per_hour","每小时最多几次降档补开口",0,5],
     ]
 
+    // 凭据放最前面：装机器人、改 AppID 都在第一屏
+    const CREDENTIALS = [
+      ["appid", "APPID（开放平台的机器人 AppID）"],
+      ["appsecret", "APPSECRET（留空=不变；打码值不会被写入）"],
+    ]
+
     const TEXTS = [
       ["group_allowlist","群白名单（openid，逗号分隔）"],
       ["c2c_allowlist","私聊白名单（同上）"], ["bot_aliases","群内别名（逗号分隔）"],
-["appid","APPID（留空=用 config.json）"],
-      ["appsecret","APPSECRET（留空=不变，需重启）"],
       ["auto_group_root","自动分组根目录（如 D:\\dsh-qqbot-temp）"],
-      ,
     ]
 
     function QQBridgePage() {
@@ -814,14 +820,15 @@ window.__ModuleLoader__.load({
         h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS),
         h("div", { style: T.inner },
           tabBar,
-          h("div", { style: T.actions },
-            h("span", { style: T.badge }, dot(!!bot.running), "进程 · " + (bot.running ? "运行中" : "已停止")),
-            h("span", { style: T.badge }, dot(!!bot.online), "在线 · " + (bot.online ? "是" : "否")),
-            h("span", { style: T.badge }, dot(state.bridge === "ready"), "桥接 · " + (state.bridge || "?")),
-            bot.pid ? h("span", { style: T.hint }, "pid " + bot.pid) : null),
-          message ? h("div", { style: T.hint }, message) : null,
-          h("div", { style: T.actions },
-            h("button", { style: Object.assign({}, T.btn, T.btnPrimary), disabled: busy, onClick: function () { manage("start") } }, "启动"),
+          h("div", { style: T.stickyTop },
+            h("div", { style: T.actions },
+              h("span", { style: T.badge }, dot(!!bot.running), "进程 · " + (bot.running ? "运行中" : "已停止")),
+              h("span", { style: T.badge }, dot(!!bot.online), "在线 · " + (bot.online ? "是" : "否")),
+              h("span", { style: T.badge }, dot(state.bridge === "ready"), "桥接 · " + (state.bridge || "?")),
+              bot.pid ? h("span", { style: T.hint }, "pid " + bot.pid) : null),
+            message ? h("div", { style: T.hint }, message) : null,
+            h("div", { style: T.actions },
+              h("button", { style: Object.assign({}, T.btn, T.btnPrimary), disabled: busy, onClick: function () { manage("start") } }, "启动"),
             h("button", { style: T.btn, disabled: busy, onClick: function () { manage("restart") } }, "重启"),
             h("button", { style: T.btn, disabled: busy, onClick: function () { manage("stop") } }, "关闭（不拉起）"),
             h("button", { style: T.btn, onClick: function () { window.open("https://q.qq.com/qqbot/", "_blank", "noopener") } }, "QQ 开放平台"),
@@ -836,7 +843,18 @@ window.__ModuleLoader__.load({
                   setMessage("打不开：" + target)
                 }
               },
-            }, "打开分组文件夹")),
+              }, "打开分组文件夹"))),
+          h("div", { style: T.sectionTitle }, "凭据"),
+          CREDENTIALS.map(function (item) {
+            return h(Row, { key: item[0], title: item[1] },
+              h("input", {
+                type: item[0].indexOf("secret") >= 0 ? "password" : "text",
+                placeholder: item[0].indexOf("secret") >= 0 ? "不改" : "留空=用 config.json",
+                style: Object.assign({}, T.input, T.inputWide),
+                value: value(item[0]) === undefined ? "" : value(item[0]),
+                onChange: function (event) { setValue(item[0], event.target.value) },
+              }))
+          }),
           h("div", { style: T.sectionTitle }, "机器人环境（把 Python / SDK / 机器人代码一次配好）"),
           h("div", { style: T.card },
             h("div", { style: T.cardRow },
@@ -893,7 +911,7 @@ window.__ModuleLoader__.load({
             value: value("group_mode"),
             disabled: busy,
             onChange: function (next) { setValue("group_mode", next) },
-          }),          h("div", { style: T.sectionTitle }, "过滤与凭据"),
+          }),          h("div", { style: T.sectionTitle }, "过滤与目录"),
           TEXTS.map(function (item) {
             return h(Row, { key: item[0], title: item[1] },
               h("input", {
@@ -903,9 +921,10 @@ window.__ModuleLoader__.load({
                 onChange: function (event) { setValue(item[0], event.target.value) },
               }))
           }),
-          h("div", { style: T.actions },
+          h("div", { style: T.stickyBottom },
             h("button", { style: Object.assign({}, T.btn, T.btnPrimary), disabled: busy, onClick: save }, "保存设置"),
-            h("button", { style: T.btn, disabled: busy, onClick: function () { setDraft({}); load() } }, "重新读取")),
+            h("button", { style: T.btn, disabled: busy, onClick: function () { setDraft({}); load() } }, "重新读取"),
+            h("span", { style: T.hint }, Object.keys(draft).length === 0 ? "（没有改动）" : "（有 " + Object.keys(draft).length + " 项未保存）")),
           h("div", { style: T.sectionTitle }, "运行日志（最近 200 行）"),
           h("div", { style: T.actions },
             h("button", { style: T.btn, onClick: function () { setPaused(!paused) } }, paused ? "继续刷新" : "暂停刷新"),

@@ -1,6 +1,6 @@
 {
   "name": "dsh-qq-bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "DeepSeek Harness plugin: bridge QQ conversations (driven by an external viseron-botpy bot) to DSH sessions — injects user messages, captures assistant replies, streams C2C answers, and relays tool approvals to the bot owner.",
   "license": "Apache-2.0",
   "type": "module",
