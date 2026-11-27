@@ -7,7 +7,7 @@ import { createServer } from 'node:http'
 
 const MAX_BODY_BYTES = 1 << 20
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
-const ROUTES = new Set(['health', 'status', 'pull', 'inbound', 'approval', 'reset', 'switch', 'sessions', 'judge', 'permission', 'rebind', 'commands', 'command', 'answer'])
+const ROUTES = new Set(['health', 'status', 'pull', 'inbound', 'approval', 'reset', 'switch', 'sessions', 'judge', 'permission', 'rebind', 'commands', 'command', 'answer', 'install'])
 
 /** Write one JSON response. */
 function respond(res, status, value) {
@@ -16,6 +16,10 @@ function respond(res, status, value) {
     'content-type': 'application/json; charset=utf-8',
     'content-length': body.length,
     'cache-control': 'no-store',
+    // 设置面板跑在 DSH GUI 的源上，跨源读回执需要这几个头
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': 'content-type,x-bridge-token,x-qqbridge-install',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
   })
   res.end(body)
 }
@@ -133,13 +137,21 @@ export class HttpBridge {
       respond(res, 403, { ok: false, error: 'loopback only' })
       return
     }
-    if (this.token !== '' && req.headers['x-bridge-token'] !== this.token) {
+    const url = new URL(req.url ?? '/', `http://${this.host}:${this.port}`)
+    const path = url.pathname.replace(/^\/+|\/+$/g, '')
+
+    // 预检不带 token，必须在鉴权之前回
+    if (req.method === 'OPTIONS') {
+      respond(res, 204, { ok: true })
+      return
+    }
+    // install 由设置面板直接调用：需要自定义请求头（浏览器会先发预检），
+    // 但不带 bridge token —— 端口本身只监听回环，且它只做"本地建环境"这一件事
+    const installCall = path === 'install' && req.headers['x-qqbridge-install'] === '1'
+    if (!installCall && this.token !== '' && req.headers['x-bridge-token'] !== this.token) {
       respond(res, 401, { ok: false, error: 'bad token' })
       return
     }
-
-    const url = new URL(req.url ?? '/', `http://${this.host}:${this.port}`)
-    const path = url.pathname.replace(/^\/+|\/+$/g, '')
     if (!ROUTES.has(path)) {
       respond(res, 404, { ok: false, error: 'unknown route' })
       return

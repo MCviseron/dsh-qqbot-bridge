@@ -83,6 +83,7 @@ class BridgeClient:
         quote: Optional[Dict[str, Any]] = None,
         auto_group: Optional[bool] = None,
         auto_group_root: Optional[str] = None,
+        persona: str = "",
     ) -> Dict[str, Any]:
         """Hand one QQ message to DSH; the answer arrives through :meth:`pull`.
 
@@ -104,6 +105,7 @@ class BridgeClient:
                 "quote": quote,
                 "autoGroup": auto_group,
                 "autoGroupRoot": auto_group_root,
+                "persona": persona,
             },
         )
 

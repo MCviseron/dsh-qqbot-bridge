@@ -85,6 +85,28 @@ async def main():
     print(("ok   " if ok3 else "FAIL ") + "队列已清空")
     failures += 0 if ok3 else 1
 
+    class RTOn:
+        def get_bool(self, key, default=True): return key == "persona_enabled"
+        def get_int(self, key, default=0): return default
+        def get_float(self, key, default=0.0): return default
+        def get(self, key, default=None):
+            return {"persona_group": "群聊人设喵", "persona_c2c": "私聊人设喵"}.get(key, default)
+
+    bot = make(); bot.rt = RTOn()
+    gconv = "group:GROUPOPENID"
+    bot._register(gconv, "group", "GROUPOPENID", None)
+    await bot._submit(gconv, "在吗", "群友A", False)
+    ok4 = bot.bridge.calls[-1].get("persona") == "群聊人设喵"
+    print(("ok   " if ok4 else "FAIL ") + f"群聊带群聊人设 (persona={bot.bridge.calls[-1].get('persona')!r})")
+    failures += 0 if ok4 else 1
+
+    cconv = "c2c:OTHEROPENID"
+    bot._register(cconv, "c2c", "OTHEROPENID", None)
+    await bot._submit(cconv, "在吗", "主人", True)
+    ok5 = bot.bridge.calls[-1].get("persona") == "私聊人设喵"
+    print(("ok   " if ok5 else "FAIL ") + f"私聊带私聊人设 (persona={bot.bridge.calls[-1].get('persona')!r})")
+    failures += 0 if ok5 else 1
+
     print("ALL PASS" if failures == 0 else f"{failures} FAILED")
     return 0 if failures == 0 else 1
 

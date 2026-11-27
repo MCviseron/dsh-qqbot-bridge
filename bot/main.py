@@ -2097,6 +2097,11 @@ class DSHBot(Client):
         if chat and text.strip():
             # 长度与"别复述过程"由插件侧的群聊指令负责，这里只补一条不重复的话
             text = "【闲聊模式】不要调用工具。" + chr(10) + text
+        # 人设只在新会话的第一条消息里带一次，由插件按会话判断
+        persona = ""
+        if self.rt_bool("persona_enabled", False):
+            slot = "persona_group" if conv_key.startswith("group:") else "persona_c2c"
+            persona = self.rt_str(slot, "").strip()
         self._chat_turns[conv_key] = bool(chat)
         try:
             await self.bridge.inbound(
@@ -2110,6 +2115,7 @@ class DSHBot(Client):
                 quote=quote,
                 auto_group=self.rt_bool("auto_group", True),
                 auto_group_root=self.rt_str("auto_group_root", ""),
+                persona=persona,
             )
         except BridgeError as error:
             log.error("inbound failed: %s", error)

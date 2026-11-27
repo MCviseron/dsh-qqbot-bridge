@@ -11,6 +11,8 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { Installer, readInstall, resolveSourceDir } from './install.js'
 import { HttpBridge } from './server.js'
 import { ConversationStore } from './store.js'
 
@@ -117,6 +119,27 @@ export function apply(ctx, rawConfig) {
   const ready = Promise.all([store.load(), mkdir(config.cwd, { recursive: true }), mkdir(dirname(logPath), { recursive: true })]).catch(error => {
     log(`state init failed: ${error instanceof Error ? error.message : String(error)}`)
   })
+
+  // 一键装机器人环境：找 Python → 建 venv → 装依赖 → 复制随包代码 → 写配置 → 拉起
+  const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const installer = new Installer({
+    dataDir: config.dataDir,
+    sourceDir: join(pluginRoot, 'bot'),
+    log,
+    launch: async (pythonPath, botDir) => {
+      const { spawn } = await import('node:child_process')
+      const child = spawn(pythonPath, ['-u', 'main.py', '--supervise'], {
+        cwd: botDir,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.unref()
+      log(`bot supervisor spawned after install (pid ${child.pid})`)
+      return child.pid
+    },
+  })
+  void installer.load()
 
   const stripHints = (line) => {
     // the bot appends a sticker hint to the prompt; keep it out of the transcript
@@ -272,7 +295,7 @@ export function apply(ctx, rawConfig) {
   }
 
   /** Model-facing preamble: where the message came from and who is speaking. */
-  const composePrompt = ({ text, convKey, senderName, isOwner, chime, quote }) => {
+  const composePrompt = ({ text, convKey, senderName, isOwner, chime, quote, persona }) => {
     const isGroup = convKey.startsWith('group:')
     const header = isGroup ? 'QQ 群聊' : 'QQ 单聊'
     const who = isOwner
@@ -312,6 +335,8 @@ export function apply(ctx, rawConfig) {
       ? '（这是群聊：像真人一样回 1~3 句口语。想清楚再说完，不要复述工具过程。）'
       : '（先直接回答，别铺垫；默认简短，需要细节时再用 Markdown 展开。）')
     parts.push('', '（QQ 侧支持 Markdown 渲染：标题/列表/代码块/表格都能用，表情符号可以直接用。要把本地图片或文件发给对方，先把文件写到工作目录里，再在回复里单独一行写 [[send_file: 绝对路径]]，机器人会把它作为文件发出。）')
+    // 人设只在会话的第一条消息里出现一次，之后靠会话历史记住
+    if (typeof persona === 'string' && persona.trim() !== '') parts.push('', '人设：', persona.trim())
     return parts.join('\n')
   }
 
@@ -388,6 +413,23 @@ export function apply(ctx, rawConfig) {
       conversations: store.size(),
       pendingApprovals: approvals.size,
     }),
+    // 设置面板的「下载 / 配置机器人」：status 查进度，start 开装
+    install: async (body) => {
+      const action = typeof body?.action === 'string' && body.action !== '' ? body.action : 'status'
+      if (action === 'status') return { ok: true, ...installer.state() }
+      if (action !== 'start') return { ok: false, error: `unknown install action: ${action}` }
+      installer.sourceDir = await resolveSourceDir(pluginRoot)
+      const started = installer.start({
+        appid: typeof body.appid === 'string' ? body.appid : '',
+        appsecret: typeof body.appsecret === 'string' ? body.appsecret : '',
+        autoGroupRoot: typeof body.autoGroupRoot === 'string' ? body.autoGroupRoot : '',
+        // 新装的机器人要连的就是这个插件，地址与令牌直接给它带上
+        bridgeUrl: `http://${config.host}:${config.port}`,
+        bridgeToken: config.token,
+      })
+      log(`install started: source=${installer.sourceDir} target=${installer.botDir}`)
+      return { ok: true, ...started }
+    },
     status: () => ({
       ok: true,
       cwd: config.cwd,
@@ -455,9 +497,11 @@ export function apply(ctx, rawConfig) {
       if (sessionController === undefined) return { ok: false, error: 'sessionController unavailable' }
 
       let sessionId = store.sessionOf(convKey)
+      let freshSession = false
       if (sessionId === undefined) {
         const created = await sessionController.create({ cwd: await workspaceFor(convKey, { autoGroup: body?.autoGroup, autoGroupRoot: body?.autoGroupRoot }) })
         sessionId = String(created.sessionId)
+        freshSession = true
         log(`session created: ${convKey} → ${sessionId}`)
       }
       await store.bind(convKey, sessionId, typeof body?.approvalTarget === 'string' ? body.approvalTarget : undefined)
@@ -480,7 +524,9 @@ export function apply(ctx, rawConfig) {
         selected.add(sessionId)
       }
 
-      const content = [{ type: 'text', text: composePrompt({ text, convKey, senderName, isOwner: body?.isOwner === true, chime: body?.chime === true, quote }) }]
+      // 人设随请求带过来；只有刚建的新会话才塞进提示词，之后不再重复
+      const persona = freshSession && typeof body?.persona === 'string' ? body.persona : ''
+      const content = [{ type: 'text', text: composePrompt({ text, convKey, senderName, isOwner: body?.isOwner === true, chime: body?.chime === true, quote, persona }) }]
       for (const image of images.slice(0, 4)) {
         const mediaType = typeof image?.mediaType === 'string' ? image.mediaType : ''
         const data = typeof image?.data === 'string' ? image.data : ''
@@ -763,9 +809,13 @@ export function apply(ctx, rawConfig) {
       // panel unreachable -> the supervisor is gone, start it
     }
     try {
+      // 一键装过就按 install.json 里的 venv 解释器和安装目录启动
+      const installed = await readInstall(config.dataDir)
+      const pythonPath = typeof installed?.pythonPath === 'string' && installed.pythonPath !== '' ? installed.pythonPath : config.pythonPath
+      const botDir = typeof installed?.botDir === 'string' && installed.botDir !== '' ? installed.botDir : config.botDir
       const { spawn } = await import('node:child_process')
-      const child = spawn(config.pythonPath, ['-u', 'main.py', '--supervise'], {
-        cwd: config.botDir,
+      const child = spawn(pythonPath, ['-u', 'main.py', '--supervise'], {
+        cwd: botDir,
         detached: true,
         stdio: 'ignore',
         windowsHide: true,

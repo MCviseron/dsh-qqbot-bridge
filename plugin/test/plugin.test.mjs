@@ -68,14 +68,28 @@ for (let attempt = 0; attempt < 40; attempt += 1) {
 check(health?.ok === true, 'health answers')
 check(health?.service === 'ready', 'sessionController reported ready')
 
-const inbound = await get('/inbound', { method: 'POST', body: JSON.stringify({ convKey: 'group:g1', text: '你好', senderName: '群友A', isOwner: false, approvalTarget: 'c2c:owner' }) }).then(r => r.json())
+// 设置页的「下载 / 配置机器人」轮询：走自定义头免 token，回执必须是 200 + ok:true
+const installResponse = await get('/install', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-qqbridge-install': '1' },
+  body: JSON.stringify({ action: 'status' }),
+})
+const installBody = await installResponse.json()
+check(installResponse.status === 200, 'install status answers 200 (not 400)')
+check(installBody.ok === true && Array.isArray(installBody.steps) && installBody.running === false, 'install status reports the step list')
+check(typeof installBody.succeeded === 'boolean', 'install status reports success separately from the HTTP receipt')
+
+const inbound = await get('/inbound', { method: 'POST', body: JSON.stringify({ convKey: 'group:g1', text: '你好', senderName: '群友A', isOwner: false, approvalTarget: 'c2c:owner', persona: '你是一条会说话的鱼喵' }) }).then(r => r.json())
 check(inbound.ok === true && inbound.sessionId === 'session-1', 'inbound binds a session')
 check(calls.create === 1, 'session created once')
 check(calls.prompt.length === 1 && calls.prompt[0].content[0].text.includes('你好'), 'prompt carries the QQ text')
 check(calls.prompt[0].mode === 'queue' && typeof calls.prompt[0].requestId === 'string', 'prompt uses queue mode with a request id')
 
-await get('/inbound', { method: 'POST', body: JSON.stringify({ convKey: 'group:g1', text: '再来一次' }) }).then(r => r.json())
+check(calls.prompt[0].content[0].text.includes('人设：') && calls.prompt[0].content[0].text.includes('你是一条会说话的鱼喵'), 'persona rides the first message of a new session')
+
+await get('/inbound', { method: 'POST', body: JSON.stringify({ convKey: 'group:g1', text: '再来一次', persona: '你是一条会说话的鱼喵' }) }).then(r => r.json())
 check(calls.create === 1 && calls.prompt.length === 2, 'second message reuses the session')
+check(!calls.prompt[1].content[0].text.includes('人设：'), 'persona is not repeated once the session has history')
 
 // Turn capture: reply must travel back through the outbox.
 const onEvent = listeners.get('session/event')

@@ -19,6 +19,14 @@ DeepSeek Harness Host 插件：把 QQ 会话映射成 DSH Session。
 | `approvalTimeoutMs` | 180000 | 审批等待上限，超时按 `approvalDefault` |
 | `approvalDefault` | reject | 超时结果 |
 
+## 一键装机器人环境
+
+设置页「机器人环境」里的 **下载 / 配置机器人** 会在 `<DSH_HOME>/qq-bridge/` 下把机器人装好：
+找系统 Python（3.10+）→ 建 `venv` → pip 装 aiohttp / Pillow / viseron-qqbotpy（直连失败自动换清华镜像）
+→ 复制随包的 `bot/` 源码（跳过 state/logs/`.env`/config.json）→ 写 `bot/config.json` 的
+AppID / AppSecret / 分组根目录 → 拉起 `main.py --supervise`。
+装完落 `install.json`，之后自动启动优先用里面的 venv 解释器；重复点会复用已有 venv。
+
 ## HTTP 路由（全部要求 `x-bridge-token`，且只接受回环来源）
 
 | 方法与路径 | 请求 | 响应 |

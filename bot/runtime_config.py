@@ -36,6 +36,10 @@ DEFAULTS: Dict[str, Any] = {
     "admin_owner_window_s": 300,
     "bot_say_memory_s": 300,
     "stuck_turn_s": 180,
+    # 人设：只在新会话的第一条消息里发一次（关掉则跟以前一样）
+    "persona_enabled": False,
+    "persona_group": "",
+    "persona_c2c": "",
     # 发送行为
     "md_auto": True,
     "ack_delay_s": 5,

@@ -11,10 +11,18 @@
 
 ## [未发布]
 
-自 plugin-v0.2.1 起的改动，按分类列出；下一次打 tag 时整体归档为下一个版本。
+### 新增
+
+- （暂无）
+
+## [0.3.0] - 2026-11-27
+
+自 plugin-v0.2.1 起的改动，按分类列出。
 
 ### 新增
 
+- 设置页新增「机器人环境 · 下载 / 配置机器人」一键装环境：找系统 Python（3.10+，py 启动器优先）→ 建 venv → pip 装 aiohttp / Pillow / viseron-qqbotpy（直连 PyPI 失败自动换清华镜像）→ 复制随包的 bot/ 源码（跳过 state/logs/`.env`/config.json）→ 写 bot/config.json 的 AppID·AppSecret·分组根目录 → 拉起守护进程；面板内轮询进度与日志；插件启动时优先用 install.json 里的 venv 解释器；npm 包用 prepack 暂存 plugin/bot，requirements 改指 PyPI 的 viseron-qqbotpy>=0.4.4 (2026-11-26)
+- 人设系统：设置页新增「启用人设」开关 + 群聊/私聊两个大输入框（persona_enabled / persona_group / persona_c2c）；只在**新会话的第一条消息**里把「人设：」追加到提示词末尾，会话已有历史就不再重复（开关关着的新会话跟以前一样） (2026-11-26)
 - fap GUI 换成应用套壳：系统 Edge/Chrome 以 --app 模式开无地址栏窗口（独立 user-data-dir，关窗即 app.stop），界面重做为现代控制台（深色侧栏/卡片/KPI/收发柱状图/检查项/插件主从与子页/设置表单/事件流/日志）；新增 /api/settings、/api/traffic、/api/plugins/{id}、/api/issues 与 SettingSpec；修侧栏跟随内容滚动的布局问题 (2026-11-26)
 - fap GUI 重做：应用式布局（深色侧栏 + 卡片概览 + 状态栏）、设置页自动生成表单（AppID/AppSecret/白名单…，密钥掩码）、插件主从视图与「命令·设置·页面」三个子页、事件过滤/暂停、日志跟随、插件页面渲染；新增 SettingSpec/SettingsRegistry 与 --gui-shot 截屏验收 (2026-11-26)
 - fap：GUI 改成应用套壳（tkinter 原生窗口：概览/插件/命令/事件/插件页面/日志），新增 --gui-selftest 与 start-*.bat 双击启动；修 aiohttp 访问日志刷屏（access_log=None） (2026-11-26)

@@ -12,6 +12,8 @@ window.__ModuleLoader__.load({
     const React = require("react")
     const h = React.createElement
     const PANEL = "http://127.0.0.1:39062"
+    // 安装器在宿主插件里（Node 侧），不在机器人面板
+    const BRIDGE = "http://127.0.0.1:39061"
 
     const T = {
       page: { width: "100%", height: "100%", minHeight: 0, overflow: "auto", boxSizing: "border-box", padding: "24px clamp(16px,4vw,48px) 32px", color: "var(--dsw-alias-label-primary)", fontFamily: "var(--dsw-font-family, inherit)" },
@@ -70,6 +72,7 @@ window.__ModuleLoader__.load({
       sectionTitle: { fontSize: 12, letterSpacing: "0.04em", color: "var(--dsw-alias-label-tertiary)", margin: "10px 0 2px" },
       input: { width: 132, padding: "5px 8px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", textAlign: "right" },
       inputWide: { width: 260, textAlign: "left" },
+      textarea: { width: "100%", minHeight: 120, padding: "8px 10px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", textAlign: "left" },
       btn: { padding: "6px 14px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "transparent", color: "var(--dsw-alias-label-primary)", font: "inherit", cursor: "pointer" },
       btnPrimary: { background: "var(--dsw-alias-label-primary)", borderColor: "var(--dsw-alias-label-primary)", color: "var(--dsw-alias-bg-layer-3)" },
       actions: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
@@ -127,9 +130,10 @@ window.__ModuleLoader__.load({
       kick_confirm: ["踢人二次审批", "开启后踢人前先在你的私聊弹一张确认卡片，点了才执行"],
       interject_hook_only: ["插话只要命中钩子才判断", "开启后只有被点名/带问号/提到别名/长时间冷场才花一次判断；关闭则每攒够几条就判一次"],
       judge_score_output: ["判断用打分制", "让模型先给 0~3 分的开口意愿，再按阈值决定发不发"],
+      persona_enabled: ["启用人设", "只在新会话的第一条消息里发一次；会话已有历史就不再重复"],
     }
 
-    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_inline_redraw","kick_confirm","interject_hook_only","judge_score_output"]
+    const SWITCHES = ["enabled","c2c_enabled","group_enabled","group_full_mode","group_at_only","md_auto","stream_enabled","ack_enabled","quote_enabled","capture_enabled","auto_group","approval_inline_redraw","kick_confirm","interject_hook_only","judge_score_output","persona_enabled"]
       .map(function (key) { return [key, LABELS[key][0], LABELS[key][1]] })
 
     // 静默时段：开始/结束时间 + 最右侧开关，并实时显示"当前是否静默、下次切换"
@@ -187,6 +191,8 @@ window.__ModuleLoader__.load({
       const [tab, setTab] = React.useState("settings")
       const [dash, setDash] = React.useState(null)
       const [dashRange, setDashRange] = React.useState("hour")
+      const [install, setInstall] = React.useState(null)
+      const [installNote, setInstallNote] = React.useState("")
       const [stickers, setStickers] = React.useState([])
       const [stickerNote, setStickerNote] = React.useState("")
       const [stickerDir, setStickerDir] = React.useState("")
@@ -209,6 +215,33 @@ window.__ModuleLoader__.load({
       }, [call])
 
       React.useEffect(function () { load() }, [load])
+
+      // 装环境的状态轮询必须和其它 hook 一样在提前 return 之前声明，否则 hook 数量会变
+      const installCall = async function (body) {
+        const response = await fetch(BRIDGE + "/install", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-qqbridge-install": "1" },
+          body: JSON.stringify(body || {}),
+        })
+        return await response.json()
+      }
+      // 挂载时读一次；running 翻成 true 后持续轮询（首次挂载 running=false，旧写法会直接停掉不再更新）
+      const installRunning = install !== null && install.running === true
+      React.useEffect(function () {
+        let stop = false
+        const tick = async function () {
+          try {
+            const state = await installCall({ action: "status" })
+            if (stop) return
+            setInstall(state)
+            if (state.running === true) setTimeout(tick, 1000)
+          } catch (error) {
+            if (!stop) setInstallNote("连不上宿主插件（39061），确认插件已加载")
+          }
+        }
+        void tick()
+        return function () { stop = true }
+      }, [installRunning])
       React.useEffect(function () {
         if (tab !== "stickers") return undefined
         let stop = false
@@ -279,6 +312,25 @@ window.__ModuleLoader__.load({
         catch (error) { setMessage("保存失败") }
         setBusy(false)
       }
+      // 装环境：POST 给宿主插件的 /install，再轮询进度
+      const startInstall = async function () {
+        setInstallNote("")
+        try {
+          // 面板回传的 AppSecret 是打码值（ab12****yz），别把它当真的传下去
+          const rawSecret = String(value("appsecret") === undefined ? "" : value("appsecret"))
+          const started = await installCall({
+            action: "start",
+            appid: value("appid"),
+            appsecret: rawSecret.indexOf("****") >= 0 ? "" : rawSecret,
+            autoGroupRoot: value("auto_group_root"),
+          })
+          if (started.ok !== true) { setInstallNote("启动安装失败：" + (started.error || "未知错误")); return }
+          setInstall(started.state || null)
+        } catch (error) {
+          setInstallNote("连不上宿主插件（39061），确认插件已加载")
+        }
+      }
+
       const manage = async function (action) {
         setBusy(true)
         try { const result = await call("/api/manage", { method: "POST", body: JSON.stringify({ action: action }) }); setMessage(result.message || action); await load() }
@@ -736,6 +788,21 @@ window.__ModuleLoader__.load({
         h("button", { style: tab === "dashboard" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("dashboard") } }, "数据仪表盘"),
         h("button", { style: tab === "stickers" ? Object.assign({}, T.tab, T.tabActive) : T.tab, onClick: function () { setTab("stickers") } }, "表情包"))
 
+      // 人设：一个大输入框一份，群聊与私聊分开
+      const personaBox = function (key, title, hint) {
+        return h("div", { key: key, style: T.card },
+          h("div", { style: T.cardHead },
+            h("span", { style: T.cardTitle }, title),
+            h("span", { style: T.hint }, hint)),
+          h("textarea", {
+            style: T.textarea,
+            rows: 8,
+            placeholder: "写这里，例如：你是一条叫「蓝色大肥鱼」的群宠，话短、带口癖「喵」，不主动聊政治和带节奏。",
+            value: value(key) === undefined ? "" : value(key),
+            onChange: function (event) { setValue(key, event.target.value) },
+          }))
+      }
+
       if (tab === "dashboard") {
         return h("div", { style: T.page }, h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS), h("div", { style: T.inner }, tabBar, dashboardView()))
       }
@@ -770,11 +837,40 @@ window.__ModuleLoader__.load({
                 }
               },
             }, "打开分组文件夹")),
+          h("div", { style: T.sectionTitle }, "机器人环境（把 Python / SDK / 机器人代码一次配好）"),
+          h("div", { style: T.card },
+            h("div", { style: T.cardRow },
+              h("span", { style: T.cardKey }, "状态"),
+              h("span", { style: T.cardValue },
+                install === null ? "读取中…"
+                  : install.running ? "正在配置…"
+                    : (install.done && install.succeeded) ? "配置完成"
+                      : install.installed ? "已配置" : "未用一键安装（按插件里的 pythonPath 启动）")),
+            install && install.installed
+              ? h("div", { style: T.hint }, "目录 " + install.installed.botDir + " · Python " + (install.installed.pythonVersion || "?"))
+              : h("div", { style: T.hint }, "点按钮：找系统 Python（3.10+）→ 建 venv → pip 装 aiohttp / Pillow / viseron-qqbotpy → 复制机器人代码 → 写配置 → 拉起守护进程"),
+            install && install.running && Array.isArray(install.steps)
+              ? h("div", { style: T.hint }, "第 " + (install.step + 1) + "/" + install.steps.length + " 步：" + install.steps[install.step])
+              : null,
+            install && install.error ? h("div", { style: T.hint }, "失败：" + install.error) : null,
+            installNote ? h("div", { style: T.hint }, installNote) : null,
+            h("div", { style: T.actions },
+              h("button", {
+                style: Object.assign({}, T.btn, T.btnPrimary),
+                disabled: busy || (install !== null && install.running === true),
+                onClick: function () { void startInstall() },
+              }, install && install.running ? "正在配置…" : "下载 / 配置机器人")),
+            install && Array.isArray(install.lines) && install.lines.length
+              ? h("pre", { style: T.log }, install.lines.slice(-60).join("\n"))
+              : null),
           h("div", { style: T.sectionTitle }, "开关"),
           SWITCHES.map(function (item) {
             return h(Row, { key: item[0], title: item[1], hint: item[2] },
               h(Switch, { checked: !!value(item[0]), label: item[1], disabled: busy, onChange: function (next) { setValue(item[0], next) } }))
           }),
+          h("div", { style: T.sectionTitle }, "人设（只在新会话的第一条消息里发一次）"),
+          personaBox("persona_group", "群聊人设", "群聊里带的人设；留空=不启用"),
+          personaBox("persona_c2c", "私聊人设", "单聊里带的人设；留空=不启用"),
           h("div", { style: T.sectionTitle }, "群聊节奏与发送"),
           h(QuietRow, {
             key: "quiet-hours",

@@ -8,6 +8,8 @@ bot/shots/
 bot/state/
 bot/logs/
 plugin/state/
+# prepack 暂存目录（发布时由 scripts/pack-bot.mjs 生成，不入库）
+plugin/bot/
 *.log
 __pycache__/
 *.pyc
