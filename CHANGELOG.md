@@ -15,6 +15,13 @@
 
 - （暂无）
 
+## [0.3.5] - 2026-11-27
+
+### 修复
+
+- **装了插件后宿主进程直接崩溃**：`ensureBot()` 用默认的 `pythonPath`（开发机的 `C:/Users/.../\.conda/...`）去 `spawn`，`ENOENT` 是异步 `error` 事件、抛不进 `try/catch`，整个 DSH 进程被 uncaught exception 带走（systemd 于是每 5 秒重启一次）。现在 `botDir`/`pythonPath` 默认留空，启动前先 `existsSync` 校验 `main.py` 与解释器，缺失就记一行 `bot autostart skipped: …` 并跳过；`spawn` 一律挂 `error` 监听（安装器的 launch 同样）
+- 默认路径全部改成与机器无关：`autoGroupRoot` 留空时用 `<数据目录>/auto-group`（原来是 `D:\\dsh-qqbot-temp`），成员索引读 `install.json` 装出来的 bot 目录
+
 ## [0.3.4] - 2026-11-27
 
 ### 修复

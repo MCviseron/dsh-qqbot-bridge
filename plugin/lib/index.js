@@ -8,7 +8,7 @@
  * approval.
  */
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,12 +34,13 @@ export const DEFAULT_CONFIG = {
   quoteContextChars: 300,
   historyMax: 200,
   autoGroup: true,
-  autoGroupRoot: 'D:\\dsh-qqbot-temp',
+  // 这些路径不能写死某台机器：留空则用插件数据目录，或由「一键安装」写下的 install.json 提供
+  autoGroupRoot: '',
   streamEnabled: true,
   streamIntervalMs: 250,
   autoStartBot: true,
-  botDir: 'D:/Program/QQ-Bot-Class/dsh-bot/bot',
-  pythonPath: 'C:/Users/25639/.conda/envs/ChatClone-BotPy/python.exe',
+  botDir: '',
+  pythonPath: '',
   modelProvider: '',
   model: '',
   reasoningEffort: '',
@@ -134,6 +135,7 @@ export function apply(ctx, rawConfig) {
         stdio: 'ignore',
         windowsHide: true,
       })
+      child.on('error', (error) => log(`bot supervisor spawn failed: ${error.message}`))
       child.unref()
       log(`bot supervisor spawned after install (pid ${child.pid})`)
       return child.pid
@@ -165,7 +167,7 @@ export function apply(ctx, rawConfig) {
   const workspaceFor = async (convKey, overrides) => {
     const enabled = overrides?.autoGroup === undefined ? config.autoGroup === true : overrides.autoGroup === true
     if (!enabled) return config.cwd
-    const root = String(overrides?.autoGroupRoot || config.autoGroupRoot || 'D:\\dsh-qqbot-temp')
+    const root = String(overrides?.autoGroupRoot || config.autoGroupRoot || join(config.dataDir, 'auto-group'))
     const name = convKey.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'qq'
     const dir = join(root, name)
     try {
@@ -813,6 +815,19 @@ export function apply(ctx, rawConfig) {
       const installed = await readInstall(config.dataDir)
       const pythonPath = typeof installed?.pythonPath === 'string' && installed.pythonPath !== '' ? installed.pythonPath : config.pythonPath
       const botDir = typeof installed?.botDir === 'string' && installed.botDir !== '' ? installed.botDir : config.botDir
+      // 没配置 / 路径不存在就明确跳过：spawn 的 ENOENT 是异步 'error' 事件，抛不进 try/catch，会直接崩掉宿主
+      if (pythonPath === '' || botDir === '') {
+        log('bot autostart skipped: pythonPath/botDir 未配置（用设置页的「下载 / 配置机器人」装一次）')
+        return
+      }
+      if (!existsSync(join(botDir, 'main.py'))) {
+        log(`bot autostart skipped: 找不到 ${join(botDir, 'main.py')}`)
+        return
+      }
+      if (!existsSync(pythonPath)) {
+        log(`bot autostart skipped: 解释器不存在 ${pythonPath}`)
+        return
+      }
       const { spawn } = await import('node:child_process')
       const child = spawn(pythonPath, ['-u', 'main.py', '--supervise'], {
         cwd: botDir,
@@ -820,6 +835,7 @@ export function apply(ctx, rawConfig) {
         stdio: 'ignore',
         windowsHide: true,
       })
+      child.on('error', (error) => log(`bot autostart failed: ${error.message}`))
       child.unref()
       log(`bot supervisor spawned (pid ${child.pid})`)
     } catch (error) {
@@ -1053,7 +1069,7 @@ export function apply(ctx, rawConfig) {
 
     const readMembers = () => {
       try {
-        const file = join(String(config.botDir || "."), "state", "members.json")
+        const file = join(String(config.botDir || join(config.dataDir, 'bot')), "state", "members.json")
         const raw = readFileSync(file, "utf8")
         return JSON.parse(raw)
       } catch (error) {
