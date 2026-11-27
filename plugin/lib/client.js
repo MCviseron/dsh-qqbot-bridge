@@ -3,7 +3,7 @@
  * 全部改用内联样式：宿主 main 槽位不在同一个样式作用域，注入 <style> 不可靠。
  */
 window.__ModuleLoader__.load({
-  id: "@mcviseron/dsh-qq-bridge",
+  id: "dsh-qq-bridge",
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports

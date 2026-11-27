@@ -4,10 +4,10 @@
 # assistant reply plus every pending tool approval back to the bot.
 - insert:
     - id: qq-bridge
-      # 条目名 = npm 包名。DSH 按这个名字去 profile 的 node_modules 里 import，
-      # 名字解析不到时配置会静默落空（插件用默认配置跑），所以两边必须一致：
-      # 本地 link 也要挂在 scoped 名下： "@mcviseron/dsh-qq-bridge": "link:<path>"
-      name: '@mcviseron/dsh-qq-bridge'
+      # 条目名固定为裸名 dsh-qq-bridge：link 安装与本机 profile 都用这个名字。
+      # 从 npm 装（包名是 scoped 的 @mcviseron/dsh-qq-bridge）时用别名让裸名可解析：
+      #   pnpm add "dsh-qq-bridge@npm:@mcviseron/dsh-qq-bridge@<版本>"
+      name: 'dsh-qq-bridge'
       config:
         enabled: true
         host: '127.0.0.1'
