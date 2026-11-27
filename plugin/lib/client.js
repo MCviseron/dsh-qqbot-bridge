@@ -23,7 +23,8 @@ window.__ModuleLoader__.load({
         padding: "20px 22px", borderRadius: 16,
         border: "1px solid var(--dsw-alias-border-l2, rgba(255,255,255,0.14))",
         backgroundColor: "rgba(22, 24, 30, 0.62)",
-        background: "color-mix(in srgb, var(--dsw-alias-bg-base, #14161c) 72%, transparent)",
+        // 94% 而不是 72%：卡片半透明太强时，滚动内容会从悬浮栏上下的内边距里透出来
+        background: "color-mix(in srgb, var(--dsw-alias-bg-base, #14161c) 94%, transparent)",
         backdropFilter: "blur(18px) saturate(130%)",
         WebkitBackdropFilter: "blur(18px) saturate(130%)",
         boxShadow: "0 10px 30px rgba(0,0,0,0.24)",
@@ -70,9 +71,15 @@ window.__ModuleLoader__.load({
       cardKey: { color: "var(--dsw-alias-label-tertiary)" },
       cardValue: { color: "var(--dsw-alias-label-secondary)", fontVariantNumeric: "tabular-nums" },
       sectionTitle: { fontSize: 12, letterSpacing: "0.04em", color: "var(--dsw-alias-label-tertiary)", margin: "10px 0 2px" },
-      // 顶/底悬浮栏：状态与操作、保存按钮常驻，不用滑到最底下
-      stickyTop: { position: "sticky", top: 0, zIndex: 6, display: "grid", gap: 10, padding: "10px 0 12px", marginTop: -10, background: "linear-gradient(to bottom, rgba(22,24,30,0.97), rgba(22,24,30,0.88))", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid var(--dsw-alias-border-l2)" },
-      stickyBottom: { position: "sticky", bottom: 0, zIndex: 6, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 0", background: "linear-gradient(to top, rgba(22,24,30,0.97), rgba(22,24,30,0.88))", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderTop: "1px solid var(--dsw-alias-border-l2)" },
+      // 顶/底悬浮栏：跟随主题的表面色（写死深色在浅色主题里就是一块黑板），圆角+描边看着像工具条
+      stickyBar: { position: "sticky", zIndex: 6, display: "grid", gap: 10, padding: "10px 12px", borderRadius: 12,
+        background: "color-mix(in srgb, var(--dsw-alias-bg-base, #ffffff) 96%, transparent)",
+        backdropFilter: "blur(14px) saturate(140%)", WebkitBackdropFilter: "blur(14px) saturate(140%)",
+        border: "1px solid var(--dsw-alias-border-l2, rgba(0,0,0,0.12))", boxShadow: "0 6px 18px rgba(0,0,0,0.10)" },
+      stickyTop: { top: 0 },
+      stickyBottom: { bottom: 0, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
+      // 设置页去掉外层上下内边距，悬浮栏才能贴到视口边缘，不留一条会透出内容的缝
+      pageTight: { paddingTop: 0, paddingBottom: 0 },
       input: { width: 132, padding: "5px 8px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", textAlign: "right" },
       inputWide: { width: 260, textAlign: "left" },
       textarea: { width: "100%", minHeight: 120, padding: "8px 10px", border: "1px solid var(--dsw-alias-border-l2)", borderRadius: 6, background: "var(--dsw-alias-bg-layer-3)", color: "var(--dsw-alias-label-primary)", font: "inherit", lineHeight: 1.6, resize: "vertical", boxSizing: "border-box", textAlign: "left" },
@@ -816,11 +823,11 @@ window.__ModuleLoader__.load({
         return h("div", { style: T.page }, h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS), h("div", { style: T.inner }, tabBar, stickersView()))
       }
 
-      return h("div", { style: T.page },
+      return h("div", { style: Object.assign({}, T.page, T.pageTight) },
         h("style", { key: "qq-scroll-css" }, SCROLLBAR_CSS),
         h("div", { style: T.inner },
-          tabBar,
-          h("div", { style: T.stickyTop },
+          h("div", { style: { paddingTop: 24 } }, tabBar),
+          h("div", { style: Object.assign({}, T.stickyBar, T.stickyTop) },
             h("div", { style: T.actions },
               h("span", { style: T.badge }, dot(!!bot.running), "进程 · " + (bot.running ? "运行中" : "已停止")),
               h("span", { style: T.badge }, dot(!!bot.online), "在线 · " + (bot.online ? "是" : "否")),
@@ -921,7 +928,7 @@ window.__ModuleLoader__.load({
                 onChange: function (event) { setValue(item[0], event.target.value) },
               }))
           }),
-          h("div", { style: T.stickyBottom },
+          h("div", { style: Object.assign({}, T.stickyBar, T.stickyBottom, { marginBottom: 24 }) },
             h("button", { style: Object.assign({}, T.btn, T.btnPrimary), disabled: busy, onClick: save }, "保存设置"),
             h("button", { style: T.btn, disabled: busy, onClick: function () { setDraft({}); load() } }, "重新读取"),
             h("span", { style: T.hint }, Object.keys(draft).length === 0 ? "（没有改动）" : "（有 " + Object.keys(draft).length + " 项未保存）")),
