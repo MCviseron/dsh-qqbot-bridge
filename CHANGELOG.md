@@ -15,6 +15,12 @@
 
 - （暂无）
 
+## [0.3.4] - 2026-11-27
+
+### 修复
+
+- 浏览器半身加载失败（`client-modules: loaded without registering "@mcviseron/dsh-qq-bridge"`）：bundle 里 `__ModuleLoader__.load({ id })` 写的是裸名，而宿主按 scoped 包名去 import，id 对不上就不注册。发布流程新增 `scripts/scope-client-id.mjs`，publish 前把 id 改成 `package.json` 的 name，并 grep 断言；本地 link 开发仍用裸名
+
 ## [0.3.3] - 2026-11-27
 
 ### 修复

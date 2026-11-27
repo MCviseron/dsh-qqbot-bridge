@@ -49,7 +49,11 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - name: publish under the scoped name (local name must match the DSH profile key)
-        run: npm pkg set name=@mcviseron/dsh-qq-bridge
+        run: |
+          npm pkg set name=@mcviseron/dsh-qq-bridge
+          # 浏览器半身必须用同一个 id 注册，否则宿主报 "loaded without registering"
+          node scripts/scope-client-id.mjs
+          grep -q "id: \"@mcviseron/dsh-qq-bridge\"" lib/client.js
       - name: pack check
         run: npm pack --dry-run
       - name: upgrade npm (OIDC trusted publishing needs npm >= 11.5)
