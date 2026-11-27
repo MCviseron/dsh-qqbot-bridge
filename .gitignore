@@ -25,3 +25,7 @@ workspace/
 share/
 shots/
 notes.md
+
+# fap 里的群缓存也是运行态数据
+fap/groups.json
+fap/legacy/bot/groups.json
